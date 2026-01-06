@@ -18,21 +18,28 @@ This section lists the main Floor Manager implementations available in the commu
 - Quick start instructions
 - Links to complete documentation
 
-### Python Implementation (by Diego Gosmar)
+### Python-FastAPI-Streamlit Implementation (Redis + PostgreSQL Ready)
 
 - **Repository**: https://github.com/diegogosmar/floor
 - **Language**: Python 3.11+
 - **OFP Version**: 1.0.1
 - **License**: MIT
+- **Technology Stack**: 
+  - FastAPI REST API
+  - Streamlit interactive GUI
+  - Redis (configured for caching and message queuing)
+  - PostgreSQL (configured for persistent storage)
+  - Docker Compose deployment
 - **Features**: 
   - Full Floor Manager with REST API
+  - Interactive web GUI for testing and visualization
   - Agent registry and capability discovery
   - LLM agent support (OpenAI, Anthropic, Ollama)
-  - Docker Compose deployment
+  - Ready to scale with Redis + PostgreSQL
   - Comprehensive test suite
   - Full OFP 1.0.1 compliance
 
-This implementation provides a complete Floor Manager per OFP 1.0.1 specification, with the Floor Manager acting as an autonomous Convener. It includes FastAPI REST endpoints, envelope processing, and support for multiple orchestration patterns.
+This implementation provides a complete Floor Manager per OFP 1.0.1 specification, with the Floor Manager acting as an autonomous Convener. It includes FastAPI REST endpoints, Streamlit-based interactive GUI, envelope processing, and support for multiple orchestration patterns. The architecture is designed to scale with Redis for caching/messaging and PostgreSQL for persistent storage.
 
 See [implementation README](implementations/python-diegogosmar/README.md) for details.
 
