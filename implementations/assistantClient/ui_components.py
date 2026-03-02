@@ -245,13 +245,18 @@ def setup_appearance():
 BUTTON_TEXT_COLOR = "#FFFFFF"
 HEADING_FONT = ("Arial", 14, "bold")
 
+_EVENT_WINDOWS = {
+    "incoming": [],
+    "outgoing": [],
+}
+
 
 def create_main_window():
     """Create and configure the main application window."""
     root = CTk()
     root.title("Open Floor Client Assistant")
     # Shorter by default now that errors are shown in a separate window.
-    root.geometry("750x850")
+    root.geometry("800x1000")
     apply_app_icon(root)
     return root
 
@@ -271,9 +276,10 @@ def create_ui_elements(root, known_agents):
     
     # Conversation history
     CTkLabel(content_frame, text="Conversation History:", font=HEADING_FONT).pack(pady=(5, 0))
-    widgets['conversation_text'] = CTkTextbox(content_frame, wrap='word', height=150)
+    widgets['conversation_text'] = CTkTextbox(content_frame, wrap='word', height=351)
     widgets['conversation_text'].configure(state='disabled')
     widgets['conversation_text'].pack(pady=5, padx=20, fill="both")
+
     
     # Text entry
     CTkLabel(content_frame, text="Enter text for utterance:", font=HEADING_FONT).pack(pady=(10, 0))
@@ -340,6 +346,21 @@ def create_ui_elements(root, known_agents):
     # Unchecked by default
     widgets['show_error_log_checkbox'].deselect()
     widgets['show_error_log_checkbox'].pack(side="left", padx=5)
+
+    widgets['close_event_windows_button'] = CTkButton(
+        bottom_buttons_frame,
+        text="Close Event Windows",
+        text_color=BUTTON_TEXT_COLOR,
+        command=close_event_windows,
+    )
+    widgets['close_event_windows_button'].pack(side="left", padx=5)
+
+    widgets['reset_conversation_button'] = CTkButton(
+        bottom_buttons_frame,
+        text="Reset Conversation History",
+        text_color=BUTTON_TEXT_COLOR,
+    )
+    widgets['reset_conversation_button'].pack(side="left", padx=5)
     
     widgets['start_floor_button'] = CTkButton(bottom_buttons_frame, text="Start Floor Manager", text_color=BUTTON_TEXT_COLOR)
     # widgets['start_floor_button'].pack(side="left", padx=5)  # Hidden - auto-started on launch
@@ -361,7 +382,7 @@ def create_error_log_window(root):
 
 
 def create_agent_textbox_ui(agents_frame, agent_info, agent_url, 
-                            is_revoked, grant_floor_callback, 
+                            is_revoked, agent_status, grant_floor_callback, 
                             revoke_floor_callback, uninvite_callback):
     """Create a frame with buttons and textbox for a specific agent.
     
@@ -375,11 +396,29 @@ def create_agent_textbox_ui(agents_frame, agent_info, agent_url,
         uninvite_callback: Function to call when uninviting
         
     Returns:
-        tuple: (agent_frame, url_textbox, name_textbox, uninvite_btn, floor_btn, checkbox)
+        tuple: (agent_frame, url_textbox, name_textbox, uninvite_btn, floor_btn, checkbox, pending_dot)
     """
     # Create a frame to hold both button and textbox
     agent_frame = CTkFrame(agents_frame)
     agent_frame.pack(pady=2, padx=5, fill="x")
+
+    # Per-agent response status indicator (idle=blue, pending=green, error=red)
+    dot_text = "●"
+    dot_color = "#2563eb"  # blue (ready/idle)
+    if agent_status == "pending":
+        dot_text = "●"
+        dot_color = "#16a34a"
+    elif agent_status == "error":
+        dot_text = "●"
+        dot_color = "#d32f2f"
+
+    pending_dot = CTkLabel(
+        agent_frame,
+        text=dot_text,
+        text_color=dot_color,
+        width=16,
+    )
+    pending_dot.pack(side="left", padx=(3, 4), pady=5)
     
     # Determine button text and command based on revoked status
     if is_revoked:
@@ -439,7 +478,7 @@ def create_agent_textbox_ui(agents_frame, agent_info, agent_url,
     agent_checkbox = CTkCheckBox(agent_frame, text="", width=30)
     agent_checkbox.pack(side="left", padx=(0,5), pady=5)
     
-    return agent_frame, url_textbox, name_textbox, uninvite_btn, floor_btn, agent_checkbox
+    return agent_frame, url_textbox, name_textbox, uninvite_btn, floor_btn, agent_checkbox, pending_dot
 
 
 def update_agent_textbox_ui(textbox, new_info):
@@ -463,22 +502,17 @@ def display_response_json(root, response_data, assistant_name, assistant_url):
     response_text.pack(padx=10, pady=10)
 
 
-def display_incoming_event_json(root, event_data, assistant_name, assistant_url):
-    """Display a single incoming event (dict) in its own window."""
+def display_incoming_envelope_json(root, envelope_data, assistant_name, assistant_url):
+    """Display a single incoming envelope (dict) in its own window."""
     response_window = CTkToplevel(root)
+    _register_event_window(response_window, "incoming")
     apply_app_icon(response_window)
-    event_type = ""
-    try:
-        if isinstance(event_data, dict):
-            event_type = event_data.get("eventType", "")
-    except Exception:
-        event_type = ""
 
-    title = f"Incoming Event{f' ({event_type})' if event_type else ''} from {assistant_name} at {assistant_url}"
+    title = f"Incoming Envelope from {assistant_name} at {assistant_url}"
     response_window.title(title)
     response_window.geometry("600x400")
     response_text = CTkTextbox(response_window, wrap="word", width=600, height=400)
-    response_text.insert("0.0", json.dumps(event_data, indent=2))
+    response_text.insert("0.0", json.dumps(envelope_data, indent=2))
     response_text.configure(state="disabled")
     response_text.pack(padx=10, pady=10)
 
@@ -486,6 +520,7 @@ def display_incoming_event_json(root, event_data, assistant_name, assistant_url)
 def display_outgoing_envelope_json(root, envelope_data, target_label: str = ""):
     """Display a single outgoing envelope (dict) in its own window."""
     response_window = CTkToplevel(root)
+    _register_event_window(response_window, "outgoing")
     title = "Outgoing Envelope"
     if target_label:
         title += f" to {target_label}"
@@ -503,6 +538,32 @@ def display_response_html(html_content):
     file_path = Path.cwd() / "cards.html"
     file_path.write_text(html_content, encoding="utf-8")
     webbrowser.open(file_path.as_uri())
+
+
+def _register_event_window(window, bucket: str) -> None:
+    if bucket not in _EVENT_WINDOWS:
+        return
+    _EVENT_WINDOWS[bucket].append(window)
+
+    def _on_close():
+        try:
+            _EVENT_WINDOWS[bucket].remove(window)
+        except ValueError:
+            pass
+        window.destroy()
+
+    window.protocol("WM_DELETE_WINDOW", _on_close)
+
+
+def close_event_windows() -> None:
+    for bucket in ("incoming", "outgoing"):
+        windows = list(_EVENT_WINDOWS.get(bucket, []))
+        for window in windows:
+            try:
+                window.destroy()
+            except Exception:
+                pass
+        _EVENT_WINDOWS[bucket] = []
 
 
 def escape_blanks_in_url(url):

@@ -1,36 +1,104 @@
 """Event handling and OpenFloor protocol processing for the Assistant Client."""
 
 import json
+import importlib
 import requests
-from CTkMessagebox import CTkMessagebox
+import time
+try:
+    ctk_module_name = "CTk" + "Messagebox"
+    CTkMessagebox = importlib.import_module(ctk_module_name).CTkMessagebox
+except ModuleNotFoundError:
+    from tkinter import messagebox
+
+    def CTkMessagebox(title, message, icon=None):
+        if icon == "cancel":
+            messagebox.showerror(title, message)
+        else:
+            messagebox.showinfo(title, message)
 import openfloor
 from openfloor import DialogEvent, UtteranceEvent
 import ui_components
 
+DEFAULT_REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept": "application/json",
+}
 
-def send_broadcast_to_agents(payload_obj, urls_to_send):
+REQUEST_CONNECT_TIMEOUT_SECONDS = 3
+REQUEST_READ_TIMEOUT_SECONDS = 20
+REQUEST_MAX_RETRIES = 2
+REQUEST_RETRY_BACKOFF_SECONDS = 0.5
+
+
+def _normalize_localhost_url(url):
+    if not url:
+        return url
+    return url.replace("://localhost", "://127.0.0.1", 1)
+
+
+def _post_json_with_retry(target_url, payload_obj):
+    request_url = _normalize_localhost_url(target_url)
+    last_exception = None
+
+    for attempt in range(REQUEST_MAX_RETRIES + 1):
+        try:
+            return requests.post(
+                request_url,
+                json=payload_obj,
+                timeout=(REQUEST_CONNECT_TIMEOUT_SECONDS, REQUEST_READ_TIMEOUT_SECONDS),
+                headers=DEFAULT_REQUEST_HEADERS,
+            )
+        except requests.RequestException as exc:
+            last_exception = exc
+            if attempt >= REQUEST_MAX_RETRIES:
+                break
+            backoff_seconds = REQUEST_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+            print(f"Retrying {request_url} in {backoff_seconds:.1f}s after error: {exc}")
+            time.sleep(backoff_seconds)
+
+    raise last_exception
+
+
+def send_broadcast_to_agents(payload_obj, urls_to_send, on_response=None, ui_dispatch=None, on_error=None):
     """Phase 1: Send broadcast to all agents and collect their responses.
     
     Args:
         payload_obj: The JSON payload to send
         urls_to_send: List of URLs to send to
+        on_response: Optional callback invoked per response tuple as it arrives
+        ui_dispatch: Optional function that schedules callables on the UI thread
+        on_error: Optional callback invoked as on_error(target_url, message)
         
     Returns:
         list: List of tuples (target_url, response_data, original_sender, incoming_events)
     """
     all_responses = []
+
+    def _show_message(title, message, icon="cancel"):
+        if ui_dispatch is None:
+            CTkMessagebox(title=title, message=message, icon=icon)
+            return
+        try:
+            ui_dispatch(lambda: CTkMessagebox(title=title, message=message, icon=icon))
+        except Exception:
+            CTkMessagebox(title=title, message=message, icon=icon)
     
     for target_url in urls_to_send:
         try:
             print(f"\nSending broadcast to: {target_url}")
-            response = requests.post(target_url, json=payload_obj, timeout=5)
+            response = _post_json_with_retry(target_url, payload_obj)
             print(f"HTTP status from {target_url}: {response.status_code}")
             print("Response headers:", dict(response.headers))
             print("Response text (first 500 chars):", response.text[:500])
             
             # Check if response is actually JSON
             if response.status_code != 200:
-                CTkMessagebox(
+                if on_error is not None:
+                    try:
+                        on_error(target_url, f"HTTP {response.status_code}")
+                    except Exception:
+                        pass
+                _show_message(
                     title="Error",
                     message=f"Server {target_url} returned status {response.status_code}\n\nResponse: {response.text[:200]}",
                     icon="cancel"
@@ -38,7 +106,12 @@ def send_broadcast_to_agents(payload_obj, urls_to_send):
                 continue
         except requests.exceptions.ConnectionError as e:
             print(f"Connection error for {target_url}: {e}")
-            CTkMessagebox(
+            if on_error is not None:
+                try:
+                    on_error(target_url, str(e))
+                except Exception:
+                    pass
+            _show_message(
                 title="Connection Error",
                 message=f"Cannot connect to {target_url}\n\nIs the server running?",
                 icon="cancel"
@@ -46,7 +119,12 @@ def send_broadcast_to_agents(payload_obj, urls_to_send):
             continue
         except requests.exceptions.Timeout:
             print(f"Timeout connecting to {target_url}")
-            CTkMessagebox(
+            if on_error is not None:
+                try:
+                    on_error(target_url, "timeout")
+                except Exception:
+                    pass
+            _show_message(
                 title="Timeout Error",
                 message=f"Connection to {target_url} timed out",
                 icon="cancel"
@@ -54,7 +132,12 @@ def send_broadcast_to_agents(payload_obj, urls_to_send):
             continue
         except Exception as e:
             print(f"Error sending to {target_url}: {e}")
-            CTkMessagebox(
+            if on_error is not None:
+                try:
+                    on_error(target_url, str(e))
+                except Exception:
+                    pass
+            _show_message(
                 title="Error",
                 message=f"Error sending to {target_url}: {str(e)}",
                 icon="cancel"
@@ -65,7 +148,12 @@ def send_broadcast_to_agents(payload_obj, urls_to_send):
             response_data = response.json()
         except json.JSONDecodeError as e:
             print(f"JSON decode error for {target_url}: {e}")
-            CTkMessagebox(
+            if on_error is not None:
+                try:
+                    on_error(target_url, "invalid json")
+                except Exception:
+                    pass
+            _show_message(
                 title="Error",
                 message=f"Server {target_url} did not return valid JSON.\n\nStatus: {response.status_code}\n\nResponse: {response.text[:200]}",
                 icon="cancel"
@@ -78,7 +166,15 @@ def send_broadcast_to_agents(payload_obj, urls_to_send):
         original_sender = response_data.get("openFloor", {}).get("sender", {})
         
         # Store response for Phase 2 processing
-        all_responses.append((target_url, response_data, original_sender, incoming_events))
+        response_tuple = (target_url, response_data, original_sender, incoming_events)
+        all_responses.append(response_tuple)
+
+        # Optional streaming callback: process/display this response immediately
+        if on_response is not None:
+            try:
+                on_response(response_tuple)
+            except Exception as callback_error:
+                print(f"Error in on_response callback for {target_url}: {callback_error}")
     
     return all_responses
 
@@ -96,6 +192,13 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
         extract_url_callback: Function to extract URL from agent info (optional)
         manifest_cache: Dictionary to cache conversational names (optional)
     """
+    def _normalize_agent_id(value):
+        if not value:
+            return value
+        if value.startswith("agent:"):
+            value = value[len("agent:"):]
+        return value.rstrip("/").lower()
+
     for target_url, response_data, original_sender, incoming_events in all_responses:
         assistantConversationalName = ""
         assistant_url = target_url
@@ -107,13 +210,16 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
                     manifest = manifests[0]
                     assistantConversationalName = manifest.get("identification", {}).get("conversationalName", "")
                     assistant_uri = manifest.get("identification", {}).get("uri", "")
-                    manifest_service_url = manifest.get("identification", {}).get("serviceUrl", target_url)
+                    ident = manifest.get("identification", {})
+                    manifest_service_url = ident.get("serviceUrl", target_url)
+                    manifest_speaker_uri = ident.get("speakerUri")
                     
                     # Cache conversational name for later use
                     if manifest_cache is not None and assistantConversationalName:
-                        manifest_cache[manifest_service_url] = assistantConversationalName
-                        if manifest_service_url != target_url:
-                            manifest_cache[target_url] = assistantConversationalName
+                        for key in (manifest_service_url, target_url, manifest_speaker_uri):
+                            normalized = _normalize_agent_id(key)
+                            if normalized:
+                                manifest_cache[normalized] = assistantConversationalName
                     
                     # Update agent info with conversational name
                     if invited_agents is not None and extract_url_callback is not None:
@@ -152,15 +258,23 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
                 
                 # Extract speaker info for conversation history
                 speaker_uri = dialog_event.get("speakerUri", "Unknown")
-                
-                # Try to get conversational name from floor manager if we don't have it yet
-                if not assistantConversationalName and floor_manager is not None and speaker_uri != "Unknown":
+
+                # Resolve speaker name using floor manager or manifest cache.
+                speaker_name = None
+                if floor_manager is not None and speaker_uri != "Unknown":
                     try:
                         conversant = floor_manager.conversants.get(speaker_uri)
                         if conversant and conversant.conversational_name:
-                            assistantConversationalName = conversant.conversational_name
+                            speaker_name = conversant.conversational_name
                     except Exception as e:
                         print(f"Could not look up conversational name from floor manager: {e}")
+                if speaker_name is None and manifest_cache is not None:
+                    normalized_speaker = _normalize_agent_id(speaker_uri)
+                    normalized_target = _normalize_agent_id(target_url)
+                    if normalized_speaker and normalized_speaker in manifest_cache:
+                        speaker_name = manifest_cache.get(normalized_speaker)
+                    elif normalized_target and normalized_target in manifest_cache:
+                        speaker_name = manifest_cache.get(normalized_target)
                 
                 # Check if there's an HTML feature and display it in browser
                 if html_features:
@@ -179,7 +293,7 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
                     # Update conversation history with utterance ID for deduplication
                     utterance_id = dialog_event.get("id")
                     update_conversation_history_callback(
-                        assistantConversationalName or speaker_uri,
+                        speaker_name or assistantConversationalName or speaker_uri,
                         extracted_value,
                         speaker_uri,
                         utterance_id
@@ -195,11 +309,15 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
                         ui_components.display_response_html(html_content)
                         
         if show_incoming_events:
-            for event in incoming_events:
-                ui_components.display_incoming_event_json(root, event, assistantConversationalName, assistant_url)
+            ui_components.display_incoming_envelope_json(
+                root,
+                response_data,
+                assistantConversationalName,
+                assistant_url,
+            )
 
 
-def forward_responses_to_agents(all_responses, urls_to_send, global_conversation, update_conversation_history_callback):
+def forward_responses_to_agents(all_responses, urls_to_send, global_conversation, update_conversation_history_callback, on_forward_status=None):
     """Phase 3: Forward all responses to all other agents (after processing all initial responses).
     
     Args:
@@ -207,6 +325,7 @@ def forward_responses_to_agents(all_responses, urls_to_send, global_conversation
         urls_to_send: List of all agent URLs
         global_conversation: The global conversation object
         update_conversation_history_callback: Function to update conversation history
+        on_forward_status: Optional callback invoked as on_forward_status(url, status)
     """
     for target_url, response_data, original_sender, incoming_events in all_responses:
         print(f"\n=== FORWARDING CHECK ===")
@@ -251,12 +370,29 @@ def forward_responses_to_agents(all_responses, urls_to_send, global_conversation
                 # Send to all other agents
                 for other_agent_url in other_agents:
                     try:
+                        if on_forward_status is not None:
+                            try:
+                                on_forward_status(other_agent_url, "pending")
+                            except Exception:
+                                pass
                         print(f"\n=== FORWARDING TO {other_agent_url} ===")
                         print(f"Conversation ID: {global_conversation.id}")
                         print(f"Number of broadcast events: {len(broadcast_events)}")
                         print(f"Broadcast events: {json.dumps(broadcast_events, indent=2)}")
-                        forward_response = requests.post(other_agent_url, json=forward_payload)
+                        forward_response = requests.post(
+                            other_agent_url,
+                            json=forward_payload,
+                            headers=DEFAULT_REQUEST_HEADERS,
+                        )
                         print(f"Forward response status: {forward_response.status_code}")
+                        if on_forward_status is not None:
+                            try:
+                                if forward_response.status_code >= 400:
+                                    on_forward_status(other_agent_url, "error")
+                                else:
+                                    on_forward_status(other_agent_url, "success")
+                            except Exception:
+                                pass
                         
                         # Check what the agent returned
                         try:
@@ -349,12 +485,39 @@ def forward_responses_to_agents(all_responses, urls_to_send, global_conversation
                                     # Forward to all other agents
                                     for recipient_url in other_recipients:
                                         try:
+                                            if on_forward_status is not None:
+                                                try:
+                                                    on_forward_status(recipient_url, "pending")
+                                                except Exception:
+                                                    pass
                                             print(f"  → Recursive forward from {other_agent_url} to {recipient_url}")
-                                            recursive_response = requests.post(recipient_url, json=recursive_payload)
+                                            recursive_response = requests.post(
+                                                recipient_url,
+                                                json=recursive_payload,
+                                                headers=DEFAULT_REQUEST_HEADERS,
+                                            )
                                             print(f"  → Recursive forward status: {recursive_response.status_code}")
+                                            if on_forward_status is not None:
+                                                try:
+                                                    if recursive_response.status_code >= 400:
+                                                        on_forward_status(recipient_url, "error")
+                                                    else:
+                                                        on_forward_status(recipient_url, "success")
+                                                except Exception:
+                                                    pass
                                         except Exception as e:
+                                            if on_forward_status is not None:
+                                                try:
+                                                    on_forward_status(recipient_url, "error")
+                                                except Exception:
+                                                    pass
                                             print(f"  → Failed recursive forward to {recipient_url}: {e}")
                         except:
                             print(f"Forward response text: {forward_response.text[:500]}")
                     except Exception as e:
+                        if on_forward_status is not None:
+                            try:
+                                on_forward_status(other_agent_url, "error")
+                            except Exception:
+                                pass
                         print(f"Failed to forward response to {other_agent_url}: {e}")
