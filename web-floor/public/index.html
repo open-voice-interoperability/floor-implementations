@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Floor Assistant Client</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app">
+    <h1>Open Floor Web Assistant Client</h1>
+
+    <section class="panel controls">
+      <label for="assistantUrl">Assistant URL</label>
+      <input id="assistantUrl" list="knownAgentList" placeholder="http://localhost:8767/" />
+      <datalist id="knownAgentList"></datalist>
+
+      <div class="row">
+        <button id="getManifestsBtn">Get Manifests</button>
+        <button id="inviteBtn">Invite</button>
+      </div>
+
+      <label for="utteranceInput">Enter text for utterance</label>
+      <input id="utteranceInput" placeholder="Type an utterance..." />
+
+      <div class="row">
+        <label class="inline">
+          <input type="checkbox" id="sendToAll" checked />
+          Send to all invited agents
+        </label>
+        <button id="sendUtteranceBtn" disabled>Send Utterance</button>
+      </div>
+
+      <div class="row options">
+        <label class="inline"><input type="checkbox" id="showIncoming" checked /> Show incoming envelopes</label>
+        <label class="inline"><input type="checkbox" id="showOutgoing" checked /> Show outgoing envelopes</label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Invited Agents</h2>
+      <div id="noAgents">No agents invited.</div>
+      <div id="agentsList"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Conversation History</h2>
+      <pre id="conversation"></pre>
+    </section>
+
+    <section class="panel">
+      <h2>Event Log</h2>
+      <pre id="eventLog"></pre>
+    </section>
+
+    <section class="panel">
+      <h2>Error Log</h2>
+      <pre id="errorLog"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
