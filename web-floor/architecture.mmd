@@ -3,20 +3,20 @@ flowchart LR
 
   subgraph B[web-floor Browser Client]
     UI[index.html UI controls]
-    JS[app.js\nBuild OpenFloor envelopes\nRender logs and conversation]
+    JS["app.js<br/>Build OpenFloor envelopes<br/>Render logs and conversation"]
   end
 
   subgraph G[Flask Gateway: flask_gateway.py]
     STATIC[GET / and static assets]
-    PROXY[POST /api/proxy-send\n(targetUrl, payload, timeoutMs)]
+    PROXY["POST /api/proxy-send<br/>targetUrl, payload, timeoutMs"]
     HEALTH[GET /health]
-    POLICY[CORS_ALLOW_ORIGINS\nGATEWAY_TARGET_ALLOWLIST (optional)]
+    POLICY["CORS_ALLOW_ORIGINS<br/>GATEWAY_TARGET_ALLOWLIST optional"]
   end
 
   subgraph A[OpenFloor Agents]
-    T[TimeAgent\nhttp://localhost:8081/]
-    E[Erin\nhttp://localhost:8082/]
-    R[Remote/Web agents\nhttps://...]
+    T["TimeAgent<br/>http://localhost:8081/"]
+    E["Erin<br/>http://localhost:8082/"]
+    R["Remote/Web agents<br/>https://..."]
   end
 
   U --> UI
@@ -38,5 +38,5 @@ flowchart LR
   POLICY -.applies to.-> PROXY
   HEALTH -.for monitoring.-> U
 
-  JS -.optional external gateway.-> Q[?gateway=http://host:port\nor window.WEB_FLOOR_GATEWAY_BASE_URL]
+  JS -.optional external gateway.-> Q["gateway override<br/>?gateway=http://host:port<br/>or window.WEB_FLOOR_GATEWAY_BASE_URL"]
   Q -.routes calls to.-> PROXY
