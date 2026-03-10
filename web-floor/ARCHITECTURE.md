@@ -15,7 +15,7 @@ flowchart LR
 
   subgraph G[Flask Gateway: flask_gateway.py]
     STATIC[GET / and static assets]
-    PROXY[POST /api/proxy-send\n{targetUrl, payload, timeoutMs}]
+    PROXY[POST /api/proxy-send\n(targetUrl, payload, timeoutMs)]
     HEALTH[GET /health]
     POLICY[CORS_ALLOW_ORIGINS\nGATEWAY_TARGET_ALLOWLIST (optional)]
   end
@@ -39,7 +39,7 @@ flowchart LR
   E -->|OpenFloor response| PROXY
   R -->|OpenFloor response| PROXY
 
-  PROXY -->|{ok, status, text, json}| JS
+  PROXY -->|ok, status, text, json| JS
   JS -->|Conversation + Event/Error logs| U
 
   POLICY -.applies to.-> PROXY
