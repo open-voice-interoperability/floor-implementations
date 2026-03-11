@@ -35,3 +35,4 @@ If the UI is hosted elsewhere, set a gateway URL via either:
 - The web app uses a local Flask proxy (`/api/proxy-send`) in `flask_gateway.py` to send OpenFloor payloads to agents.
 - Node runtime is not required for this implementation.
 - Known agents are configured in `public/app.js` (`KNOWN_AGENTS`).
+- Architecture diagram: open `ARCHITECTURE.md` and use Markdown Preview for Mermaid rendering.

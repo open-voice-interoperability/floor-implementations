@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import mimetypes
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -7,6 +8,10 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 from flask import Flask, request, jsonify, send_from_directory
+
+# Fix Windows registry often mapping .js to text/plain
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -152,7 +157,11 @@ def health():
 
 @app.route("/", methods=["GET"])
 def index():
-    return send_from_directory(PUBLIC_DIR, "index.html")
+    response = send_from_directory(PUBLIC_DIR, "index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/<path:asset_path>", methods=["GET"])
@@ -160,7 +169,11 @@ def serve_static(asset_path: str):
     candidate = PUBLIC_DIR / asset_path
     if candidate.exists() and candidate.is_file():
         return send_from_directory(PUBLIC_DIR, asset_path)
-    return send_from_directory(PUBLIC_DIR, "index.html")
+    response = send_from_directory(PUBLIC_DIR, "index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 if __name__ == "__main__":

@@ -16,8 +16,39 @@ body {
   gap: 12px;
 }
 
+.app-brand {
+  display: flex;
+  justify-content: center;
+}
+
+.app-logo {
+  width: auto;
+  height: 2em;
+  flex: 0 0 auto;
+  vertical-align: baseline;
+}
+
+.app-brand h1 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 h1, h2 {
   margin: 0 0 8px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.panel-header h2 {
+  margin: 0;
 }
 
 .panel {
@@ -30,6 +61,16 @@ h1, h2 {
 .controls {
   display: grid;
   gap: 8px;
+}
+
+.controls > label:not(.inline) {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.utterance-label {
+  font-size: 1.2rem;
+  font-weight: 600;
 }
 
 .row {
@@ -46,18 +87,23 @@ h1, h2 {
 }
 
 input[type="text"],
-input:not([type]) {
+input:not([type]),
+select {
   width: 100%;
   max-width: 700px;
   padding: 8px;
   border: 1px solid #c8d3e1;
   border-radius: 6px;
+  box-sizing: border-box;
+  background: white;
+  font-family: inherit;
+  font-size: inherit;
 }
 
 button {
   border: 0;
   border-radius: 6px;
-  background: #2463eb;
+  background: #2e9f6e;
   color: white;
   padding: 8px 12px;
   cursor: pointer;
@@ -66,6 +112,11 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.floor-btn-grant {
+  background: #86efac;
+  color: #1b4332;
 }
 
 #conversation,
@@ -82,15 +133,19 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+#conversation {
+  background: #0d2b6b;
+}
+
 #errorLog {
   background: #3a0d0d;
 }
 
 .agent-row {
   display: grid;
-  grid-template-columns: auto auto auto 18px 1fr 170px;
+  grid-template-columns: auto auto auto 18px minmax(0, 1fr);
   gap: 8px;
-  align-items: center;
+  align-items: start;
   border: 1px solid #e7ecf4;
   border-radius: 6px;
   padding: 8px;
@@ -98,12 +153,30 @@ button:disabled {
 }
 
 .agent-name {
+  grid-column: 5;
   font-weight: 600;
 }
 
 .agent-url {
+  grid-column: 6;
+  grid-row: 1;
   font-size: 0.9rem;
   color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+@media (max-width: 560px) {
+  .agent-url {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
 }
 
 .status-dot {

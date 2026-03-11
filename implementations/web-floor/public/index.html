@@ -3,15 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web Floor Assistant Client</title>
+  <title>Open Floor Conversation Hub</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main class="app">
-    <h1>Open Floor Web Assistant Client</h1>
+    <div class="app-brand">
+      <h1><img src="/open-voice-logo.png?v=1" alt="Open Voice logo" class="app-logo" /> Open Floor Protocol Conversational Floor</h1>
+    </div>
 
     <section class="panel controls">
-      <label for="assistantUrl">Assistant URL</label>
+      <label for="knownAgentSelect">Assistant URL</label>
+      <select id="knownAgentSelect">
+        <option value="">-- select an agent --</option>
+      </select>
       <input id="assistantUrl" list="knownAgentList" placeholder="http://localhost:8767/" />
       <datalist id="knownAgentList"></datalist>
 
@@ -19,8 +24,19 @@
         <button id="getManifestsBtn">Get Manifests</button>
         <button id="inviteBtn">Invite</button>
       </div>
+    </section>
 
-      <label for="utteranceInput">Enter text for utterance</label>
+    <section class="panel">
+      <h2>Invited Agents</h2>
+      <div id="noAgents">No agents invited.</div>
+      <div id="agentsList"></div>
+      <div class="row">
+        <button id="clearAllLogsBtn" type="button">Clear All Logs</button>
+      </div>
+    </section>
+
+    <section class="panel controls utterance-controls">
+      <label for="utteranceInput" class="utterance-label">Enter text for utterance</label>
       <input id="utteranceInput" placeholder="Type an utterance..." />
 
       <div class="row">
@@ -38,27 +54,30 @@
     </section>
 
     <section class="panel">
-      <h2>Invited Agents</h2>
-      <div id="noAgents">No agents invited.</div>
-      <div id="agentsList"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Conversation History</h2>
+      <div class="panel-header">
+        <h2>Conversation History</h2>
+        <button id="clearConversationBtn" type="button">Clear Conversation</button>
+      </div>
       <pre id="conversation"></pre>
     </section>
 
     <section class="panel">
-      <h2>Event Log</h2>
+      <div class="panel-header">
+        <h2>Event Log</h2>
+        <button id="clearEventLogBtn" type="button">Clear Event Log</button>
+      </div>
       <pre id="eventLog"></pre>
     </section>
 
     <section class="panel">
-      <h2>Error Log</h2>
+      <div class="panel-header">
+        <h2>Error Log</h2>
+        <button id="clearErrorLogBtn" type="button">Clear Error Log</button>
+      </div>
       <pre id="errorLog"></pre>
     </section>
   </main>
 
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/app.js?v=2"></script>
 </body>
 </html>

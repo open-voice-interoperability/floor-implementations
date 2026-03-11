@@ -1,6 +1,6 @@
 const KNOWN_AGENTS = [
   { url: "http://localhost:8767/", conversationalName: "Stella" },
-  { url: "http://localhost:8768/verity", conversationalName: "Verity" },
+  { url: "http://localhost:8768/verity/", conversationalName: "Verity" },
   { url: "http://localhost:8769/", conversationalName: "GeminiGeo" },
   { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
@@ -30,14 +30,19 @@ function gatewayPath(pathname) {
 
 const ui = {
   assistantUrl: document.querySelector("#assistantUrl"),
+  knownAgentSelect: document.querySelector("#knownAgentSelect"),
   knownAgentList: document.querySelector("#knownAgentList"),
   utteranceInput: document.querySelector("#utteranceInput"),
   sendToAll: document.querySelector("#sendToAll"),
   showIncoming: document.querySelector("#showIncoming"),
   showOutgoing: document.querySelector("#showOutgoing"),
+  clearAllLogsBtn: document.querySelector("#clearAllLogsBtn"),
   getManifestsBtn: document.querySelector("#getManifestsBtn"),
   inviteBtn: document.querySelector("#inviteBtn"),
   sendUtteranceBtn: document.querySelector("#sendUtteranceBtn"),
+  clearConversationBtn: document.querySelector("#clearConversationBtn"),
+  clearEventLogBtn: document.querySelector("#clearEventLogBtn"),
+  clearErrorLogBtn: document.querySelector("#clearErrorLogBtn"),
   noAgents: document.querySelector("#noAgents"),
   agentsList: document.querySelector("#agentsList"),
   conversation: document.querySelector("#conversation"),
@@ -175,7 +180,14 @@ function resolveHistorySpeakerName(speaker, speakerUri = "") {
     const display = resolveDisplayNameForTarget(candidateUrl, speakerUri);
     if (display && !isUrlLike(display)) return normalizeDisplayName(display);
   }
-  return normalizeDisplayName(speaker || "Unknown");
+
+  const fallback = normalizeDisplayName(speaker || "").trim();
+  if (fallback && !isUrlLike(fallback)) return fallback;
+
+  if (candidateUrl) return cleanUrlCandidate(candidateUrl);
+  if (fallback && isUrlLike(fallback)) return urlFromSpeakerUri(fallback) || cleanUrlCandidate(fallback);
+
+  return "Unknown";
 }
 
 function isNamePrefixMatch(text, candidateName) {
@@ -183,6 +195,21 @@ function isNamePrefixMatch(text, candidateName) {
   const trimmed = text.trimStart();
   const pattern = new RegExp(`^${escapeRegExp(candidateName)}(?:\\b|[\\s,:;.!?\\-])`, "i");
   return pattern.test(trimmed);
+}
+
+function stripLeadingAddressName(text, name) {
+  if (!text || !name) return text;
+  const pattern = new RegExp(`^\\s*${escapeRegExp(name)}(?:\\b|[\\s,:;.!?\\-])+`, "i");
+  return text.replace(pattern, "").trimStart();
+}
+
+function parseUtteranceForAddressedAgent(text, addressedAgent) {
+  if (!text) return text;
+  const addressedName = (addressedAgent?.name || "").trim().toLowerCase();
+  if (addressedName === "stella") {
+    return stripLeadingAddressName(text, "stella");
+  }
+  return text;
 }
 
 function findAddressedConversantByPrefix(text) {
@@ -260,6 +287,12 @@ function addConversantToGlobal(agentUrl, conversationalName = "", speakerUri = "
       if (speakerUri && !identification.speakerUri) {
         identification.speakerUri = speakerUri;
       }
+      if (!identification.organization) {
+        identification.organization = "Unknown";
+      }
+      if (!identification.synopsis) {
+        identification.synopsis = `Conversant endpoint at ${agentUrl}`;
+      }
       return;
     }
   }
@@ -269,7 +302,9 @@ function addConversantToGlobal(agentUrl, conversationalName = "", speakerUri = "
     identification: {
       speakerUri: speakerUri || `agent:${agentUrl}`,
       serviceUrl: agentUrl,
-      conversationalName: display
+      organization: "Unknown",
+      conversationalName: display,
+      synopsis: `Conversant endpoint at ${agentUrl}`
     }
   });
 }
@@ -279,6 +314,18 @@ function removeConversantFromGlobal(agentUrl) {
   state.globalConversation.conversants = state.globalConversation.conversants.filter(
     (conversant) => normalizeAgentId(conversant?.identification?.serviceUrl) !== normalizedTarget
   );
+}
+
+function removeInvitedAgent(agentUrl) {
+  if (!agentUrl) return;
+  const normalizedTarget = normalizeAgentId(agentUrl);
+  state.revokedAgents.delete(normalizedTarget);
+  state.invitedAgents = state.invitedAgents.filter(
+    (item) => normalizeAgentId(item.url) !== normalizedTarget
+  );
+  removeConversantFromGlobal(agentUrl);
+  renderAgents();
+  updateSendButtonState();
 }
 
 function addInvitedAgent(agentUrl, conversationalName = "") {
@@ -332,6 +379,26 @@ function updateConversationHistory(speaker, text, speakerUri = "", utteranceId =
   ui.conversation.scrollTop = ui.conversation.scrollHeight;
 }
 
+function clearConversationHistory() {
+  state.conversationHistory = [];
+  state.processedUtteranceIds.clear();
+  ui.conversation.textContent = "";
+}
+
+function clearEventLog() {
+  ui.eventLog.textContent = "";
+}
+
+function clearErrorLog() {
+  ui.errorLog.textContent = "";
+}
+
+function clearAllLogs() {
+  clearConversationHistory();
+  clearEventLog();
+  clearErrorLog();
+}
+
 function logEvent(message, payload = null) {
   const ts = new Date().toISOString();
   const chunk = payload ? `${message}\n${JSON.stringify(payload, null, 2)}` : message;
@@ -372,6 +439,18 @@ function refreshKnownAgentList() {
     option.value = item.conversationalName ? `${item.conversationalName} | ${item.url}` : item.url;
     ui.knownAgentList.appendChild(option);
   }
+
+  if (ui.knownAgentSelect) {
+    const currentUrl = ui.assistantUrl.value;
+    ui.knownAgentSelect.innerHTML = '<option value="">-- select an agent --</option>';
+    for (const item of merged) {
+      const option = document.createElement("option");
+      option.value = item.url;
+      option.textContent = item.conversationalName ? `${item.conversationalName} | ${item.url}` : item.url;
+      if (item.url === currentUrl) option.selected = true;
+      ui.knownAgentSelect.appendChild(option);
+    }
+  }
 }
 
 function renderAgents() {
@@ -393,10 +472,19 @@ function renderAgents() {
     const floorBtn = document.createElement("button");
     const revoked = state.revokedAgents.has(normalizeAgentId(agent.url));
     floorBtn.textContent = revoked ? "Grant Floor" : "Revoke Floor";
+    floorBtn.className = revoked ? "floor-btn-grant" : "floor-btn-revoke";
     floorBtn.addEventListener("click", async () => {
-      await sendControlEvent(revoked ? "grantFloor" : "revokeFloor", agent.url);
-      if (revoked) state.revokedAgents.delete(normalizeAgentId(agent.url));
-      else state.revokedAgents.add(normalizeAgentId(agent.url));
+      if (revoked) {
+        // Requested behavior: make grant floor return agent to invited state
+        state.revokedAgents.delete(normalizeAgentId(agent.url));
+        renderAgents();
+        await sendControlEvent("grantFloor", agent.url);
+        return;
+      }
+
+      const ok = await sendControlEvent("revokeFloor", agent.url);
+      if (!ok) return;
+      state.revokedAgents.add(normalizeAgentId(agent.url));
       renderAgents();
     });
 
@@ -405,11 +493,7 @@ function renderAgents() {
     uninviteBtn.addEventListener("click", async () => {
       const ok = await sendControlEvent("uninvite", agent.url);
       if (!ok) return;
-      state.revokedAgents.delete(normalizeAgentId(agent.url));
-      state.invitedAgents = state.invitedAgents.filter((item) => normalizeAgentId(item.url) !== normalizeAgentId(agent.url));
-      removeConversantFromGlobal(agent.url);
-      renderAgents();
-      updateSendButtonState();
+      removeInvitedAgent(agent.url);
     });
 
     const dot = document.createElement("span");
@@ -435,7 +519,9 @@ function serializeConversation() {
       identification: {
         speakerUri: item?.identification?.speakerUri || "",
         serviceUrl: item?.identification?.serviceUrl || "",
-        conversationalName: item?.identification?.conversationalName || ""
+        organization: item?.identification?.organization || "Unknown",
+        conversationalName: item?.identification?.conversationalName || "",
+        synopsis: item?.identification?.synopsis || `Conversant endpoint at ${item?.identification?.serviceUrl || "unknown"}`
       }
     }))
   };
@@ -570,11 +656,64 @@ function prependDirectAddressContext(text, directedAddressee, { speakerName = ""
   return `${addresseeName}, ${normalizedText}`;
 }
 
+function resolveDirectedAddresseeForEvent(event, fallbackDirectedAddressee = null) {
+  const explicitTo = event?.to || event?.parameters?.to || {};
+  const explicitSpeakerUri = cleanUrlCandidate(explicitTo?.speakerUri || "");
+  const explicitServiceUrl = cleanUrlCandidate(explicitTo?.serviceUrl || "");
+
+  if (!explicitSpeakerUri && !explicitServiceUrl) return fallbackDirectedAddressee;
+
+  if (explicitSpeakerUri && normalizeAgentId(explicitSpeakerUri) === normalizeAgentId(state.clientUri)) {
+    return fallbackDirectedAddressee;
+  }
+
+  if (explicitServiceUrl && normalizeAgentId(explicitServiceUrl) === normalizeAgentId(state.clientUrl)) {
+    return fallbackDirectedAddressee;
+  }
+
+  const resolvedUrl = explicitServiceUrl || urlFromSpeakerUri(explicitSpeakerUri) || "";
+  const resolvedName = resolveDisplayNameForTarget(resolvedUrl, explicitSpeakerUri);
+
+  return {
+    name: !isUrlLike(resolvedName) ? resolvedName : (fallbackDirectedAddressee?.name || ""),
+    url: resolvedUrl || fallbackDirectedAddressee?.url || "",
+    speaker_uri: explicitSpeakerUri || fallbackDirectedAddressee?.speaker_uri || ""
+  };
+}
+
+function openHtmlInPopup(htmlContent) {
+  if (!htmlContent) return;
+
+  const blob = new Blob([htmlContent], { type: "text/html" });
+  const htmlUrl = URL.createObjectURL(blob);
+  const popupFeatures = "popup=yes,width=980,height=720,resizable=yes,scrollbars=yes";
+  const popup = window.open(htmlUrl, "webFloorHtmlPopup", popupFeatures);
+
+  if (!popup) {
+    logError("Popup blocked while opening agent HTML response.");
+    URL.revokeObjectURL(htmlUrl);
+    return;
+  }
+
+  setTimeout(() => {
+    try {
+      URL.revokeObjectURL(htmlUrl);
+    } catch (_) {
+      // no-op
+    }
+  }, 60000);
+}
+
 function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = null } = {}) {
   const events = responseData?.openFloor?.events || [];
 
   for (const event of events) {
     const eventType = event?.eventType || "";
+
+    if (eventType === "uninvite") {
+      removeInvitedAgent(targetUrl);
+      continue;
+    }
 
     if (eventType === "publishManifests") {
       const manifests = event?.parameters?.servicingManifests || [];
@@ -610,6 +749,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
       const dialog = event?.parameters?.dialogEvent || event?.dialogEvent || {};
       const speakerUri = dialog?.speakerUri || "Unknown";
       const displayName = resolveDisplayNameForTarget(targetUrl, speakerUri);
+      const directedTarget = resolveDirectedAddresseeForEvent(event, directedAddressee);
 
       const textFeature = dialog?.features?.text || {};
       const tokens = textFeature?.tokens || [];
@@ -625,7 +765,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
       if (!text) continue;
 
       text = normalizeLeadingUrlInText(text, speakerUri, targetUrl);
-      text = prependDirectAddressContext(text, directedAddressee, {
+      text = prependDirectAddressContext(text, directedTarget, {
         speakerName: displayName,
         speakerUri,
         speakerUrl: targetUrl
@@ -635,8 +775,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
 
       const htmlTokens = dialog?.features?.html?.tokens || [];
       if (htmlTokens.length && htmlTokens[0]?.value) {
-        const blob = new Blob([htmlTokens[0].value], { type: "text/html" });
-        window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+        openHtmlInPopup(htmlTokens[0].value);
       }
     }
   }
@@ -654,7 +793,7 @@ async function sendControlEvent(eventType, agentUrl) {
 
   const response = await proxySend(agentUrl, payload, 10000);
 
-  if (!response?.ok || response?.status !== 200) {
+  if (!response?.ok) {
     setAgentStatus(agentUrl, "error");
     logError(`${eventType} failed for ${agentUrl}`, response);
     return false;
@@ -684,6 +823,7 @@ async function sendEvents(eventTypes) {
 
   let targetUrls = collectTargetUrls(eventTypes, assistantUrl);
   let addressedAgent = null;
+  let parsedUserInput = userInput;
 
   if (eventTypes.includes("utterance")) {
     if (!userInput) {
@@ -696,6 +836,7 @@ async function sendEvents(eventTypes) {
       if (isUrlLike(addressedAgent.name)) {
         addressedAgent.name = resolveDisplayNameForTarget(addressedAgent.url || urlFromSpeakerUri(addressedAgent.speaker_uri), addressedAgent.speaker_uri);
       }
+      parsedUserInput = parseUtteranceForAddressedAgent(userInput, addressedAgent);
       targetUrls = state.invitedAgents.map((agent) => agent.url);
     }
 
@@ -720,7 +861,7 @@ async function sendEvents(eventTypes) {
 
   const usePrivate = !ui.sendToAll.checked;
 
-  for (const targetUrl of targetUrls) {
+  const sendTasks = targetUrls.map(async (targetUrl) => {
     if (eventTypes.includes("invite")) {
       addInvitedAgent(targetUrl);
       renderAgents();
@@ -729,15 +870,22 @@ async function sendEvents(eventTypes) {
 
     setAgentStatus(targetUrl, "working");
 
-    const payload = buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent, usePrivate);
+    const payload = buildEnvelopeForTarget(targetUrl, eventTypes, parsedUserInput, addressedAgent, usePrivate);
     if (ui.showOutgoing.checked) logEvent(`Outgoing to ${targetUrl}`, payload);
 
-    const response = await proxySend(targetUrl, payload, 10000);
+    let response;
+    try {
+      response = await proxySend(targetUrl, payload, 10000);
+    } catch (error) {
+      setAgentStatus(targetUrl, "error");
+      logError(`Request failed for ${targetUrl}`, String(error));
+      return;
+    }
 
-    if (!response?.ok || response?.status !== 200) {
+    if (!response?.ok) {
       setAgentStatus(targetUrl, "error");
       logError(`Request failed for ${targetUrl}`, response);
-      continue;
+      return;
     }
 
     setAgentStatus(targetUrl, "idle");
@@ -748,7 +896,9 @@ async function sendEvents(eventTypes) {
       logError(`Non-JSON response from ${targetUrl}`, response);
       setAgentStatus(targetUrl, "error");
     }
-  }
+  });
+
+  await Promise.allSettled(sendTasks);
 }
 
 function escapeRegExp(value) {
@@ -763,6 +913,10 @@ function bindEvents() {
     sendEvents(events);
   });
   ui.sendUtteranceBtn.addEventListener("click", () => sendEvents(["utterance"]));
+  ui.clearAllLogsBtn.addEventListener("click", clearAllLogs);
+  ui.clearConversationBtn.addEventListener("click", clearConversationHistory);
+  ui.clearEventLogBtn.addEventListener("click", clearEventLog);
+  ui.clearErrorLogBtn.addEventListener("click", clearErrorLog);
 
   ui.utteranceInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -770,6 +924,16 @@ function bindEvents() {
       ui.sendUtteranceBtn.click();
     }
   });
+
+  if (ui.knownAgentSelect) {
+    ui.knownAgentSelect.addEventListener("change", () => {
+      const selected = ui.knownAgentSelect.value;
+      if (selected) {
+        ui.assistantUrl.value = selected;
+        ui.knownAgentSelect.value = "";
+      }
+    });
+  }
 }
 
 function init() {

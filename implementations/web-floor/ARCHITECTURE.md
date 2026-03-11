@@ -4,49 +4,58 @@ This document describes the current `web-floor` implementation using a browser U
 
 ## Diagram
 
+If Mermaid still does not render in VS Code preview, open `architecture.html` in a browser for a no-extension fallback view.
+
+Sanity check:
+
+```mermaid
+flowchart LR
+  A[Mermaid enabled] --> B[Preview works]
+```
+
 ```mermaid
 flowchart LR
   U[User in Browser]
 
   subgraph B[web-floor Browser Client]
     UI[index.html UI controls]
-    JS["app.js<br/>Build OpenFloor envelopes<br/>Render logs and conversation"]
+    JS["app.js: build OpenFloor envelopes; render logs and conversation"]
   end
 
   subgraph G[Flask Gateway: flask_gateway.py]
     STATIC[GET / and static assets]
-    PROXY["POST /api/proxy-send<br/>targetUrl, payload, timeoutMs"]
+    PROXY["POST /api/proxy-send (targetUrl, payload, timeoutMs)"]
     HEALTH[GET /health]
-    POLICY["CORS_ALLOW_ORIGINS<br/>GATEWAY_TARGET_ALLOWLIST optional"]
+    POLICY["CORS_ALLOW_ORIGINS; optional GATEWAY_TARGET_ALLOWLIST"]
   end
 
   subgraph A[OpenFloor Agents]
-    T["TimeAgent<br/>http://localhost:8081/"]
-    E["Erin<br/>http://localhost:8082/"]
-    R["Remote/Web agents<br/>https://..."]
+    T[TimeAgent local 8081]
+    E[Erin local 8082]
+    R[Remote or web agents]
   end
 
   U --> UI
   UI --> JS
 
-  U -->|Open http://localhost:8090| STATIC
-  JS -->|proxy request| PROXY
+  U --> STATIC
+  JS --> PROXY
   PROXY --> T
   PROXY --> E
   PROXY --> R
 
-  T -->|OpenFloor response| PROXY
-  E -->|OpenFloor response| PROXY
-  R -->|OpenFloor response| PROXY
+  T --> PROXY
+  E --> PROXY
+  R --> PROXY
 
-  PROXY -->|ok, status, text, json| JS
-  JS -->|Conversation + Event/Error logs| U
+  PROXY --> JS
+  JS --> U
 
-  POLICY -.applies to.-> PROXY
-  HEALTH -.for monitoring.-> U
+  POLICY --> PROXY
+  HEALTH --> U
 
-  JS -.optional external gateway.-> Q["gateway override<br/>?gateway=http://host:port<br/>or window.WEB_FLOOR_GATEWAY_BASE_URL"]
-  Q -.routes calls to.-> PROXY
+  JS --> Q[Gateway override option]
+  Q --> PROXY
 ```
 
 ## Notes

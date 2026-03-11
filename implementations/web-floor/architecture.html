@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>web-floor Architecture Diagram</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: Segoe UI, Arial, sans-serif;
+        background: #f6f8fb;
+        color: #1f2937;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 22px;
+      }
+
+      p {
+        margin: 0 0 20px;
+      }
+
+      .panel {
+        background: #ffffff;
+        border: 1px solid #d9e2ef;
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>web-floor Architecture</h1>
+    <p>Fallback Mermaid viewer for environments where Markdown preview does not render Mermaid.</p>
+
+    <div class="panel">
+      <pre class="mermaid">
+flowchart LR
+  U[User in Browser]
+
+  subgraph B[web-floor Browser Client]
+    UI[index.html UI controls]
+    JS["app.js: build OpenFloor envelopes; render logs and conversation"]
+  end
+
+  subgraph G[Flask Gateway: flask_gateway.py]
+    STATIC[GET / and static assets]
+    PROXY["POST /api/proxy-send (targetUrl, payload, timeoutMs)"]
+    HEALTH[GET /health]
+    POLICY["CORS_ALLOW_ORIGINS; optional GATEWAY_TARGET_ALLOWLIST"]
+  end
+
+  subgraph A[OpenFloor Agents]
+    T[TimeAgent local 8081]
+    E[Erin local 8082]
+    R[Remote or web agents]
+  end
+
+  U --> UI
+  UI --> JS
+
+  U --> STATIC
+  JS --> PROXY
+  PROXY --> T
+  PROXY --> E
+  PROXY --> R
+
+  T --> PROXY
+  E --> PROXY
+  R --> PROXY
+
+  PROXY --> JS
+  JS --> U
+
+  POLICY --> PROXY
+  HEALTH --> U
+
+  JS --> Q[Gateway override option]
+  Q --> PROXY
+      </pre>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "default" });
+    </script>
+  </body>
+</html>
