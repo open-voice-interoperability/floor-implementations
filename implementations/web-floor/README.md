@@ -27,6 +27,23 @@ Optional environment variables:
 - `CORS_ALLOW_ORIGINS` (default `*`, comma-separated list supported)
 - `GATEWAY_TARGET_ALLOWLIST` (optional comma-separated URL prefixes)
 
+## Deploy on Vercel
+Deploy this folder as its own Vercel project with Root Directory set to `implementations/web-floor`.
+
+Included deployment files:
+- `api/index.py` for the Vercel Python entrypoint
+- `requirements.txt` for Flask
+- `vercel.json` to route all requests through the Flask gateway and include `public/` assets
+
+Recommended environment variables:
+- `CORS_ALLOW_ORIGINS` set to your deployed web-floor origin, or `*` for broad access
+- `GATEWAY_TARGET_ALLOWLIST` set to the public agent URL prefixes you want this proxy to reach
+
+Important notes for Vercel:
+- `localhost` agents in `public/app.js` will not work from a deployed Vercel project
+- Use public HTTPS agent endpoints for Stella, TimeAgent, and any other invited agents
+- Redeploy without cache after changing gateway configuration
+
 If the UI is hosted elsewhere, set a gateway URL via either:
 - query param: `?gateway=http://localhost:8090`
 - global before `app.js`: `window.WEB_FLOOR_GATEWAY_BASE_URL = "http://localhost:8090"`

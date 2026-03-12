@@ -1,15 +1,25 @@
-const KNOWN_AGENTS = [
+const LOCAL_ONLY_AGENTS = [
   { url: "http://localhost:8767/", conversationalName: "Stella" },
   { url: "http://localhost:8768/verity/", conversationalName: "Verity" },
   { url: "http://localhost:8769/", conversationalName: "GeminiGeo" },
   { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
+  { url: "http://localhost:8082/", conversationalName: "Erin" }
+];
+
+const PUBLIC_AGENTS = [
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
-  { url: "http://localhost:8082/", conversationalName: "Erin" },
   { url: "http://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
 ];
+
+function isLocalUiHost() {
+  const host = (window.location.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local");
+}
+
+const KNOWN_AGENTS = isLocalUiHost() ? [...LOCAL_ONLY_AGENTS, ...PUBLIC_AGENTS] : [...PUBLIC_AGENTS];
 
 function normalizeGatewayBaseUrl(value) {
   if (!value || typeof value !== "string") return "";
