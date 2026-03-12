@@ -21,6 +21,16 @@ body {
   justify-content: center;
 }
 
+.top-level-section {
+  border: 2px solid #8aa0bd;
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(180deg, #f1f6ff 0%, #e4edf9 100%);
+  box-shadow: 0 10px 24px rgba(51, 65, 85, 0.14);
+}
+
 .app-logo {
   width: auto;
   height: 2em;
