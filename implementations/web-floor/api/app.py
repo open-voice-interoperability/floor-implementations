@@ -13,7 +13,7 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
 BASE_DIR = Path(__file__).resolve().parent
-PUBLIC_DIR = BASE_DIR.parent / "public"
+PUBLIC_DIR = BASE_DIR / "public"
 
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
 
