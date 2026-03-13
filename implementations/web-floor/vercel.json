@@ -4,9 +4,7 @@
     {
       "src": "api/app.py",
       "use": "@vercel/python",
-      "config": {
-        "includeFiles": ["api/public/index.html", "api/public/**"]
-      }
+      
     }
   ],
   "routes": [
