@@ -8,7 +8,7 @@ const LOCAL_ONLY_AGENTS = [
 
 const PUBLIC_AGENTS = [
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
-  { url: "http://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
+  { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
