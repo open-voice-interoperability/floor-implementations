@@ -1,15 +1,18 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "public/**",
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["public/**", "flask_gateway.py"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
     }
   ]
 }
