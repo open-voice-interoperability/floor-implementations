@@ -5,7 +5,7 @@
       "src": "api/app.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": ["public/**", "public/index.html", "flask_gateway.py"]
+        "includeFiles": ["public/index.html", "public/**", "flask_gateway.py"]
       }
     }
   ],

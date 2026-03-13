@@ -93,6 +93,8 @@ def health():
 
 @app.route("/", methods=["GET"])
 def index():
+	index_path = (PUBLIC_DIR / "index.html").resolve()
+	print(f"[DEBUG] index.html resolved path: {index_path}")
 	response = send_from_directory(PUBLIC_DIR, "index.html")
 	response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
 	response.headers["Pragma"] = "no-cache"
