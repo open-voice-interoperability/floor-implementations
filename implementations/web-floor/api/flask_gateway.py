@@ -1,6 +1,15 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os
 import glob
+...existing code...
+BASE_DIR = Path(__file__).resolve().parent
+PUBLIC_DIR = BASE_DIR.parent / "public"
+
+app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
+
+# ...existing code...
+
+# Debug route to list files in public directory
 @app.route("/debug-files", methods=["GET"])
 def debug_files():
     files = []
