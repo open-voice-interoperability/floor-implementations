@@ -1,3 +1,17 @@
+from flask import Flask, request, jsonify, send_from_directory
+import os
+import glob
+@app.route("/debug-files", methods=["GET"])
+def debug_files():
+    files = []
+    try:
+        for root, dirs, filenames in os.walk(PUBLIC_DIR):
+            for filename in filenames:
+                rel_path = os.path.relpath(os.path.join(root, filename), PUBLIC_DIR)
+                files.append(rel_path)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"files": files})
 #!/usr/bin/env python3
 import json
 import mimetypes
