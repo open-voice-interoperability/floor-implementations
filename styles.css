@@ -1,0 +1,221 @@
+[33mcommit 5fe1f8fc741099251265faeb3bd108f77e6daa35[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Mon Mar 16 15:36:12 2026 -0400
+
+    restore index.html
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit f28dc65523e1fa0b74ed4399d3e0770ba271030e[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 12:03:33 2026 -0400
+
+    update for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit aed500d340ca94aaa17e60ef4c6e32760032078f[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 12:01:31 2026 -0400
+
+    update for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit e20360f165ee5993374ae15e26da824b19e57676[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:59:02 2026 -0400
+
+    vercel update
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit e30c0f845a2ca382806c17957124d472204a2dab[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:56:36 2026 -0400
+
+    refactor for vercel
+    
+    the static UI is at one endpoint and the api to the flask server is at another point
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 513a67b6b98f7651ef518c39b93a77f8c75de11a[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:47:22 2026 -0400
+
+    updates for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 84f4a21492a7527169e5f6e4bf58d2e5b7e91269[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:42:27 2026 -0400
+
+    updates for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 37c3d5c875212e904eea4cc6a4e53b2d3978441f[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:37:55 2026 -0400
+
+    updates for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 923ce9ff12c4be2dcc236c0ab2e1a2a402638a09[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:24:08 2026 -0400
+
+    vercel update
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit a1287472649ffde48ee444499718fd7f702a5512[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:19:58 2026 -0400
+
+    refactor for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 1fb33a984363ef9ed219f8d27836afde636cf130[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:15:04 2026 -0400
+
+    updates for vercel
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit a9666dc6d0f9ffac6bff0c26d1df673ef0fe9dc2[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:11:50 2026 -0400
+
+    vercel fixes
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 13f1a10cf4b8a1bfe067c3fbee3b38b31b9f2761[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:07:47 2026 -0400
+
+    fixes for vercel deployment
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit d7e3eadf40cfa558dd1a487512946c96706223e5[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 11:03:22 2026 -0400
+
+    changes for vercel deployment
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 54ddb40a982234c4600b1b41d7e3350410dbc65a[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 10:59:49 2026 -0400
+
+    update flask entrypoint
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit c2df78d98875293b4bf1cd6219488a391cb12758[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 10:49:41 2026 -0400
+
+    update vercel.json
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit a2dd13476602b4e1412691fb74454059c6f77c18[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 10:25:36 2026 -0400
+
+    Fix Verity PythonAnywhere URL to use https
+    
+    Signed-off-by: Open Voice Network <info@openvoicenetwork.org>
+
+[33mcommit ebf6e9b807d8546b71cdadb17aed8135e39878fb[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 10:13:56 2026 -0400
+
+    Fix vercel.json: use builds+routes for Python serverless function
+    
+    Signed-off-by: Open Voice Network <info@openvoicenetwork.org>
+
+[33mcommit 23b64b8ed94c75ce233cfd450e66d78bc73bfb6e[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Fri Mar 13 08:54:37 2026 -0400
+
+    Update vercel.json
+    
+    Signed-off-by Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit d99534cf5945096b8abeaa8fa3f16d8ea4c6c051[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Thu Mar 12 17:53:41 2026 -0400
+
+    feat(web-floor): add Vercel deployment support and safer agent visibility
+    
+    add Vercel Python entrypoint, routing config, and requirements for web-floor gateway deployment, document Vercel root, env vars, and public-endpoint assumptions in web-floor, add section headings and top-level boxed layout for agent/floor status, conversation, and diagnostics, show localhost agents only on local UI host while keeping public agents on deployed site
+    
+    Signed-off-by: Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 6a9e3d0c8f1c158b7b8c60391397b5448dce4486[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Thu Mar 12 17:29:20 2026 -0400
+
+    feat(web-floor): organize UI into labeled boxed sections
+    
+    add top-level headings for agent/floor status, conversation, and diagnostics
+    group each major area into a distinct bordered container
+    strengthen outer section styling for clearer visual separation
+    Signed-off-by: Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 04de8384892521b4749b1b684acc9ad8b1dec53f[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Wed Mar 11 15:49:44 2026 -0400
+
+    UI improvements and floor management refinements for web-floor
+    
+    Visual changes:
+    - Increase logo height from 1em to 2em for better visibility
+    - Reorder control panels: Invited Agents now appears above Enter text for utterance
+    - Update page heading to "Open Floor Protocol Conversational Floor"
+    - Change primary button color from blue (#2463eb) to teal-green (#2e9f6e)
+    - Change Grant Floor button to light green (#86efac) when revoked
+    - Increase "Assistant URL" label size to match section headings (1.2rem, semibold)
+    - Reposition agent names and URLs side-by-side in grid layout
+    
+    Functional changes:
+    - Grant Floor now returns agent to invited state instead of removing from list
+    - Accept any 2xx HTTP response as success (not just 200) for uninvite/floor operations
+    - Normalize Verity endpoint to include trailing slash to avoid 308 redirects
+    
+    Fixes agent management reliability and improves user interface consistency.
+    
+    Signed-off-by: Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit a42d7ac6221912057f32e8b0374f9eea584d2c5a[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Tue Mar 10 11:39:44 2026 -0400
+
+    update mermaid diagrams
+    
+    Signed-off-by: Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 11d59481b1edc08e43bebcd68c80a065642cd70c[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Tue Mar 10 11:04:01 2026 -0400
+
+    fixed errors in mermaid diagrams
+    
+    Signed-off-by: Deborah Dahl <dahl@conversational-technologies.com>
+
+[33mcommit 53db6539345c3fc5e01370ea8889b3b666498f43[m
+Author: Deborah Dahl <dahl@conversational-technologies.com>
+Date:   Tue Mar 10 10:49:34 2026 -0400
+
+    feat(web-floor): switch to Flask gateway and remove Node runtime
+    
+    - add thin 
