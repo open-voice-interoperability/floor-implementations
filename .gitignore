@@ -1,2 +1,4 @@
 /implementations/assistantClient/openfloor
 implementations/web-floor/__pycache__/flask_gateway.cpython-311.pyc
+
+.vercel
