@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 
 # Fix Windows registry often mapping .js to text/plain
 mimetypes.add_type("application/javascript", ".js")
@@ -16,6 +17,15 @@ BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
+
+# Read allowed origins from environment variable (comma-separated)
+allowed_origins = os.environ.get("ALLOWED_ORIGINS", "").split(",")
+
+# Remove empty strings and strip whitespace
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+
+# Apply CORS
+CORS(app, origins=allowed_origins)
 
 def _parse_csv_env(value: str) -> list[str]:
 	return [item.strip() for item in (value or "").split(",") if item.strip()]
