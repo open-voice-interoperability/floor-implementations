@@ -13,46 +13,7 @@ JavaScript web version of the Python `assistantClient`.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-	U[User in Browser]
-
-	subgraph C[web-floor Client]
-		UI[index.html]
-		JS[app.js]
-	end
-
-	subgraph L[Local Runtime]
-		FG[api/flask_gateway.py]
-		ST[public assets]
-	end
-
-	subgraph V[Vercel Runtime]
-		VS[@vercel/static serves public/**]
-		VP[@vercel/python api/index.py -> flask_gateway.app]
-	end
-
-	subgraph A[OpenFloor Agents]
-		A1[Local agents]
-		A2[Remote agents]
-	end
-
-	U --> UI
-	UI --> JS
-
-	U --> ST
-	JS -->|POST /api/proxy-send| FG
-	FG -->|POST OpenFloor envelope| A1
-	FG -->|POST OpenFloor envelope| A2
-	A1 --> FG
-	A2 --> FG
-	FG --> JS
-
-	U --> VS
-	JS -->|POST /api/proxy-send| VP
-	VP -->|forward request| A1
-	VP -->|forward request| A2
-```
+![web-floor architecture](architecture.svg)
 
 ## Run locally (Flask gateway + JS client)
 ```bash
