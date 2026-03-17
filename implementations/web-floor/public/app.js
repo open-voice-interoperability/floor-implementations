@@ -589,12 +589,23 @@ function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent
 }
 
 async function proxySend(targetUrl, payload, timeoutMs = 10000) {
-  const response = await fetch(gatewayPath("/api/proxy-send"), {
+  const gatewayUrl = gatewayPath("/api/proxy-send");
+  const response = await fetch(gatewayUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targetUrl, payload, timeoutMs })
   });
-  return response.json();
+
+  const rawText = await response.text();
+
+  try {
+    return rawText ? JSON.parse(rawText) : {};
+  } catch (_error) {
+    const preview = rawText.replace(/\s+/g, " ").slice(0, 160);
+    throw new Error(
+      `Gateway returned non-JSON from ${gatewayUrl} (${response.status} ${response.statusText}): ${preview}`
+    );
+  }
 }
 
 function normalizeLeadingUrlInText(rawText, speakerUri = "", speakerUrl = "") {
