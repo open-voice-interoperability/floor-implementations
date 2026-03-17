@@ -5,7 +5,7 @@ const KNOWN_AGENTS = [
   { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
   { url: "http://localhost:8082/", conversationalName: "Erin" },
-  { url: "http://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
+  { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
