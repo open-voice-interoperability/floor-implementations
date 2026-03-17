@@ -28,6 +28,50 @@ function gatewayPath(pathname) {
   return `${GATEWAY_BASE_URL}${pathname}`;
 }
 
+function isLocalClientContext() {
+  if (typeof window === "undefined") return false;
+
+  const protocol = (window.location.protocol || "").toLowerCase();
+  const hostname = (window.location.hostname || "").toLowerCase();
+
+  if (protocol === "file:") return true;
+  if (!hostname) return false;
+
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]" || hostname === "0.0.0.0") {
+    return true;
+  }
+
+  if (/^10\./.test(hostname) || /^192\.168\./.test(hostname)) return true;
+
+  const private172 = hostname.match(/^172\.(\d{1,3})\./);
+  if (private172) {
+    const secondOctet = Number(private172[1]);
+    if (secondOctet >= 16 && secondOctet <= 31) return true;
+  }
+
+  if (hostname.endsWith(".local")) return true;
+
+  return false;
+}
+
+function isLocalAgentUrl(urlValue) {
+  const candidate = cleanUrlCandidate(urlValue);
+  if (!candidate) return false;
+
+  try {
+    const parsed = new URL(candidate);
+    const hostname = (parsed.hostname || "").toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]" || hostname === "0.0.0.0";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function getVisibleKnownAgents(agents) {
+  if (isLocalClientContext()) return agents;
+  return agents.filter((item) => !isLocalAgentUrl(item.url));
+}
+
 const ui = {
   assistantUrl: document.querySelector("#assistantUrl"),
   knownAgentSelect: document.querySelector("#knownAgentSelect"),
@@ -433,8 +477,10 @@ function refreshKnownAgentList() {
     merged.push({ url, conversationalName: resolveDisplayNameForTarget(url) || "" });
   }
 
+  const visibleAgents = getVisibleKnownAgents(merged);
+
   ui.knownAgentList.innerHTML = "";
-  for (const item of merged) {
+  for (const item of visibleAgents) {
     const option = document.createElement("option");
     option.value = item.conversationalName ? `${item.conversationalName} | ${item.url}` : item.url;
     ui.knownAgentList.appendChild(option);
@@ -443,7 +489,7 @@ function refreshKnownAgentList() {
   if (ui.knownAgentSelect) {
     const currentUrl = ui.assistantUrl.value;
     ui.knownAgentSelect.innerHTML = '<option value="">-- select an agent --</option>';
-    for (const item of merged) {
+    for (const item of visibleAgents) {
       const option = document.createElement("option");
       option.value = item.url;
       option.textContent = item.conversationalName ? `${item.conversationalName} | ${item.url}` : item.url;
@@ -953,7 +999,8 @@ function init() {
   updateSendButtonState();
   bindEvents();
 
-  ui.assistantUrl.value = state.knownAgents[0]?.url || "http://localhost:8767/";
+  const visibleAgents = getVisibleKnownAgents(state.knownAgents);
+  ui.assistantUrl.value = visibleAgents[0]?.url || "";
 }
 
 init();

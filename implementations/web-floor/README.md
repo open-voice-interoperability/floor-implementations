@@ -50,6 +50,7 @@ Recommended environment variables:
 
 Important notes for Vercel:
 - `localhost` agents in `public/app.js` will not work from a deployed Vercel project
+- The known-agent dropdown hides `localhost` endpoints when the client is served from a non-local web host, and shows them when running locally
 - Use public HTTPS agent endpoints for Stella, TimeAgent, and any other invited agents
 - Redeploy without cache after changing gateway configuration
 
@@ -61,4 +62,5 @@ If the UI is hosted elsewhere, set a gateway URL via either:
 - The web app uses a Flask proxy (`/api/proxy-send`) in `api/flask_gateway.py` to send OpenFloor payloads to agents.
 - Node runtime is not required for this implementation.
 - Known agents are configured in `public/app.js` (`KNOWN_AGENTS`).
+- Localhost entries in the known-agent UI are only shown in local client contexts.
 - Additional architecture detail is available in `ARCHITECTURE.md` and `architecture.mmd`.
