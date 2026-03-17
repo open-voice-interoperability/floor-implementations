@@ -11,11 +11,54 @@ JavaScript web version of the Python `assistantClient`.
 - Agent status indicators (idle/error/working pulse)
 - Incoming/outgoing envelope logging
 
-## Run (Flask gateway + JS client)
+## Architecture
+
+```mermaid
+flowchart LR
+	U[User in Browser]
+
+	subgraph C[web-floor Client]
+		UI[index.html]
+		JS[app.js]
+	end
+
+	subgraph L[Local Runtime]
+		FG[api/flask_gateway.py]
+		ST[public assets]
+	end
+
+	subgraph V[Vercel Runtime]
+		VS[@vercel/static serves public/**]
+		VP[@vercel/python api/index.py -> flask_gateway.app]
+	end
+
+	subgraph A[OpenFloor Agents]
+		A1[Local agents]
+		A2[Remote agents]
+	end
+
+	U --> UI
+	UI --> JS
+
+	U --> ST
+	JS -->|POST /api/proxy-send| FG
+	FG -->|POST OpenFloor envelope| A1
+	FG -->|POST OpenFloor envelope| A2
+	A1 --> FG
+	A2 --> FG
+	FG --> JS
+
+	U --> VS
+	JS -->|POST /api/proxy-send| VP
+	VP -->|forward request| A1
+	VP -->|forward request| A2
+```
+
+## Run locally (Flask gateway + JS client)
 ```bash
-cd web-floor
-python -m pip install flask
-python flask_gateway.py
+cd implementations/web-floor
+python -m pip install -r requirements.txt
+python api/flask_gateway.py
 ```
 
 Open: `http://localhost:8090`
@@ -33,7 +76,12 @@ Deploy this folder as its own Vercel project with Root Directory set to `impleme
 Included deployment files:
 - `api/index.py` for the Vercel Python entrypoint
 - `requirements.txt` for Flask
-- `vercel.json` to route all requests through the Flask gateway and include `public/` assets
+- `vercel.json` to serve static UI from `public/` and route gateway APIs to Python
+
+Current Vercel routing behavior:
+- `public/**` served by `@vercel/static`
+- `/api/*` and `/health` routed to `api/index.py` (`@vercel/python`)
+- `/` served as `public/index.html`
 
 Recommended environment variables:
 - `CORS_ALLOW_ORIGINS` set to your deployed web-floor origin, or `*` for broad access
@@ -49,7 +97,7 @@ If the UI is hosted elsewhere, set a gateway URL via either:
 - global before `app.js`: `window.WEB_FLOOR_GATEWAY_BASE_URL = "http://localhost:8090"`
 
 ## Notes
-- The web app uses a local Flask proxy (`/api/proxy-send`) in `flask_gateway.py` to send OpenFloor payloads to agents.
+- The web app uses a Flask proxy (`/api/proxy-send`) in `api/flask_gateway.py` to send OpenFloor payloads to agents.
 - Node runtime is not required for this implementation.
 - Known agents are configured in `public/app.js` (`KNOWN_AGENTS`).
-- Architecture diagram: open `ARCHITECTURE.md` and use Markdown Preview for Mermaid rendering.
+- Additional architecture detail is available in `ARCHITECTURE.md` and `architecture.mmd`.
