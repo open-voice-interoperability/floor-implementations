@@ -547,9 +547,7 @@ function renderAgents() {
     const uninviteBtn = document.createElement("button");
     uninviteBtn.textContent = "Uninvite";
     uninviteBtn.addEventListener("click", async () => {
-      const ok = await sendControlEvent("uninvite", agent.url);
-      if (!ok) return;
-      removeInvitedAgent(agent.url);
+      await sendControlEvent("uninvite", agent.url);
     });
 
     const dot = document.createElement("span");
@@ -866,7 +864,12 @@ async function sendControlEvent(eventType, agentUrl) {
     return false;
   }
 
-  setAgentStatus(agentUrl, "idle");
+  if (eventType === "uninvite") {
+    removeInvitedAgent(agentUrl);
+  } else {
+    setAgentStatus(agentUrl, "idle");
+  }
+
   if (response.json) processIncomingEnvelope(response.json, agentUrl, { directedAddressee: null });
   return true;
 }
