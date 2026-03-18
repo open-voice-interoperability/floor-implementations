@@ -21,6 +21,14 @@ body {
   justify-content: center;
 }
 
+.app-brand.section-intro {
+  display: block;
+}
+
+.app-brand.section-intro h2 {
+  margin-bottom: 8px;
+}
+
 .top-level-section {
   border: 2px solid #8aa0bd;
   border-radius: 12px;
@@ -66,6 +74,15 @@ h1, h2 {
   border: 1px solid #dfe6f1;
   border-radius: 8px;
   padding: 12px;
+}
+
+.diagnostics-content {
+  display: grid;
+  gap: 12px;
+}
+
+.diagnostics-content[hidden] {
+  display: none;
 }
 
 .controls {

@@ -49,7 +49,11 @@ function isLocalClientContext() {
     if (secondOctet >= 16 && secondOctet <= 31) return true;
   }
 
-  if (hostname.endsWith(".local")) return true;
+  if (hostname.endsWith(".local") || hostname.endsWith(".lan") || hostname.endsWith(".home") || hostname.endsWith(".internal")) {
+    return true;
+  }
+
+  if (!hostname.includes(".")) return true;
 
   return false;
 }
@@ -80,13 +84,14 @@ const ui = {
   sendToAll: document.querySelector("#sendToAll"),
   showIncoming: document.querySelector("#showIncoming"),
   showOutgoing: document.querySelector("#showOutgoing"),
-  clearAllLogsBtn: document.querySelector("#clearAllLogsBtn"),
   getManifestsBtn: document.querySelector("#getManifestsBtn"),
   inviteBtn: document.querySelector("#inviteBtn"),
   sendUtteranceBtn: document.querySelector("#sendUtteranceBtn"),
   clearConversationBtn: document.querySelector("#clearConversationBtn"),
   clearEventLogBtn: document.querySelector("#clearEventLogBtn"),
   clearErrorLogBtn: document.querySelector("#clearErrorLogBtn"),
+  toggleDiagnosticsBtn: document.querySelector("#toggleDiagnosticsBtn"),
+  diagnosticsContent: document.querySelector("#diagnosticsContent"),
   noAgents: document.querySelector("#noAgents"),
   agentsList: document.querySelector("#agentsList"),
   conversation: document.querySelector("#conversation"),
@@ -406,6 +411,9 @@ function setAgentStatus(agentUrl, status) {
 }
 
 function updateSendButtonState() {
+  const hasFocusAgent = !!(ui.assistantUrl.value || "").trim();
+  ui.getManifestsBtn.disabled = !hasFocusAgent;
+  ui.inviteBtn.disabled = !hasFocusAgent;
   ui.sendUtteranceBtn.disabled = state.invitedAgents.length === 0;
 }
 
@@ -437,10 +445,12 @@ function clearErrorLog() {
   ui.errorLog.textContent = "";
 }
 
-function clearAllLogs() {
-  clearConversationHistory();
-  clearEventLog();
-  clearErrorLog();
+function setDiagnosticsCollapsed(collapsed) {
+  if (!ui.diagnosticsContent || !ui.toggleDiagnosticsBtn) return;
+
+  ui.diagnosticsContent.hidden = !!collapsed;
+  ui.toggleDiagnosticsBtn.textContent = collapsed ? "Show Diagnostics" : "Collapse Diagnostics";
+  ui.toggleDiagnosticsBtn.setAttribute("aria-expanded", String(!collapsed));
 }
 
 function logEvent(message, payload = null) {
@@ -970,10 +980,17 @@ function bindEvents() {
     sendEvents(events);
   });
   ui.sendUtteranceBtn.addEventListener("click", () => sendEvents(["utterance"]));
-  ui.clearAllLogsBtn.addEventListener("click", clearAllLogs);
   ui.clearConversationBtn.addEventListener("click", clearConversationHistory);
   ui.clearEventLogBtn.addEventListener("click", clearEventLog);
   ui.clearErrorLogBtn.addEventListener("click", clearErrorLog);
+
+  if (ui.toggleDiagnosticsBtn && ui.diagnosticsContent) {
+    ui.toggleDiagnosticsBtn.addEventListener("click", () => {
+      setDiagnosticsCollapsed(!ui.diagnosticsContent.hidden);
+    });
+  }
+
+  ui.assistantUrl.addEventListener("input", updateSendButtonState);
 
   ui.utteranceInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -988,6 +1005,7 @@ function bindEvents() {
       if (selected) {
         ui.assistantUrl.value = selected;
         ui.knownAgentSelect.value = "";
+        updateSendButtonState();
       }
     });
   }
@@ -998,9 +1016,7 @@ function init() {
   renderAgents();
   updateSendButtonState();
   bindEvents();
-
-  const visibleAgents = getVisibleKnownAgents(state.knownAgents);
-  ui.assistantUrl.value = visibleAgents[0]?.url || "";
+  setDiagnosticsCollapsed(false);
 }
 
 init();

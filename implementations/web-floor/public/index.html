@@ -13,9 +13,27 @@
       <h1><img src="open-voice-logo.png?v=1" alt="Open Voice logo" class="app-logo" /> Open Floor Protocol Conversational Floor</h1>
     </div>
 
+    <section class="panel">
+      <h2>About OFP and This Page</h2>
+      <p>
+        Open Floor Protocol (OFP) is an event-based protocol for coordinating turn-taking (the conversational floor)
+        and message exchange across multiple voice or chat agents.
+       This work is part of the Open Voice Interoperability Initiative of the Linux Foundation AI &amp; Data Foundation:
+        <a href="https://lfaidata.foundation/" target="_blank" rel="noopener noreferrer">LF AI &amp; Data Foundation</a>
+        and <a href="https://voice-interoperability.ai" target="_blank" rel="noopener noreferrer">voice-interoperability.ai</a>. The OFP demonstrated in this page is defined in the GitHub repository <a href="https://github.com/open-voice-interoperability/openfloor-docs" target="_blank" rel="noopener noreferrer">open-voice-interoperability/openfloor-docs</a>. The source code is located in the repository <a href="https://github.com/open-voice-interoperability/floor-implementations" target="_blank" rel="noopener noreferrer">open-voice-interoperability/floor-implementations</a> in the folder "implementations/web-floor".
+      </p>
+      <p>
+        This page is a control and diagnostics test page where you can invite OFP-compliant agents, manage floor state, send utterances,
+        and inspect conversation, event, and error logs.
+      </p>
+      
+    </section>
+
     <div class="top-level-section">
-      <div class="app-brand">
+      <div class="app-brand section-intro">
         <h2>Agent/Floor Status</h2>
+        <p>This section allows you to assemble a set of agents to a conversational floor and manage their states. It allows you to select known OFP compliant agents from a pull-down, request their manifests, and invite them to the conversation. Once they have joined the floor, they're listed in "Invited Agents", with their conversational names and urls. A blue dot next to the agent's name indicates that the agent is currently on the floor but is not actively working. A green pulsing dot means that the agent is working, and a red dot means that the agent has encountered an error.</p>
+        <p>"getManifests" and "Invite" send standard OFP messages to an agent. "getManifests" requests the agent's capabilities in a standard "AssistantManifest" format. "invite" asks the agent to join the floor. When a agent has joined the floor, the user has the ability to revoke the agent's floor privileges with a "revokeFloor" message, or remove the agent from the conversation altogether with an "univite" message.</p>
       </div>
 
       <section class="panel controls">
@@ -23,28 +41,28 @@
         <select id="knownAgentSelect">
           <option value="">-- select an agent --</option>
         </select>
-        <input id="assistantUrl" list="knownAgentList" placeholder="http://localhost:8767/" />
+        <label for="assistantUrl">Current focus agent</label>
+        <input id="assistantUrl" list="knownAgentList" placeholder="" />
         <datalist id="knownAgentList"></datalist>
 
         <div class="row">
-          <button id="getManifestsBtn">Get Manifests</button>
-          <button id="inviteBtn">Invite</button>
+          <button id="getManifestsBtn" disabled>Get Manifests</button>
+          <button id="inviteBtn" disabled>Invite</button>
         </div>
       </section>
 
       <section class="panel">
         <h2>Invited Agents</h2>
+        
         <div id="noAgents">No agents invited.</div>
         <div id="agentsList"></div>
-        <div class="row">
-          <button id="clearAllLogsBtn" type="button">Clear All Logs</button>
-        </div>
       </section>
     </div>
 
     <div class="top-level-section">
-      <div class="app-brand">
+      <div class="app-brand-section-intro">
         <h2>Conversation</h2>
+        <p>This section allows you to interact with the invited agents by sending utterances and viewing the ongoing conversation. The agents will respond to your messages and to utterances from other agents on the floor, unless the utterance is specifically directed to a single agent.</p>
       </div>
 
       <section class="panel controls utterance-controls">
@@ -60,8 +78,8 @@
         </div>
 
         <div class="row options">
-          <label class="inline"><input type="checkbox" id="showIncoming" checked /> Show incoming envelopes</label>
-          <label class="inline"><input type="checkbox" id="showOutgoing" checked /> Show outgoing envelopes</label>
+          <label class="inline"><input type="checkbox" id="showIncoming" checked /> Show incoming envelopes in the event log</label>
+          <label class="inline"><input type="checkbox" id="showOutgoing" checked /> Show outgoing envelopes in the event log</label>
         </div>
       </section>
 
@@ -74,29 +92,33 @@
       </section>
     </div>
 
-    <div class="top-level-section">
-      <div class="app-brand">
+    <div class="top-level-section" id="diagnosticsSection">
+      <div class="app-brand section-intro">
         <h2>Diagnostics</h2>
+        <p>This section provides diagnostic information, including event and error logs, to show what's going on behind the scenes.</p>
+        <button id="toggleDiagnosticsBtn" type="button" aria-expanded="true" aria-controls="diagnosticsContent">Collapse Diagnostics</button>
       </div>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Event Log</h2>
-          <button id="clearEventLogBtn" type="button">Clear Event Log</button>
-        </div>
-        <pre id="eventLog"></pre>
-      </section>
+      <div id="diagnosticsContent" class="diagnostics-content">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Event Log</h2>
+            <button id="clearEventLogBtn" type="button">Clear Event Log</button>
+          </div>
+          <pre id="eventLog"></pre>
+        </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Error Log</h2>
-          <button id="clearErrorLogBtn" type="button">Clear Error Log</button>
-        </div>
-        <pre id="errorLog"></pre>
-      </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Error Log</h2>
+            <button id="clearErrorLogBtn" type="button">Clear Error Log</button>
+          </div>
+          <pre id="errorLog"></pre>
+        </section>
+      </div>
     </div>
   </main>
 
-  <script type="module" src="/app.js?v=3"></script>
+  <script type="module" src="/app.js?v=4"></script>
 </body>
 </html>
