@@ -145,7 +145,7 @@ def process_agent_responses(root, all_responses, floor_manager, update_conversat
                     
             elif event.get("eventType") == "utterance":
                 parameters = event.get("parameters", {})
-                dialog_event = parameters.get("dialogEvent", {})
+                dialog_event = parameters.get("dialogEvent") or event.get("dialogEvent", {})
                 features = dialog_event.get("features", {})
                 text_features = features.get("text", {})
                 html_features = features.get("html", {})

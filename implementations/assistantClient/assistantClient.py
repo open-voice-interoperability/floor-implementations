@@ -806,7 +806,7 @@ def send_events(event_types):
                             ui_components.show_app_message(root, "Error", "No servicing manifests found in the response.")
                     elif event.get("eventType") == "utterance":
                         parameters = event.get("parameters", {})
-                        dialog_event = parameters.get("dialogEvent", {})
+                        dialog_event = parameters.get("dialogEvent") or event.get("dialogEvent", {})
                         features = dialog_event.get("features", {})
                         text_features = features.get("text", {})
                         html_features = features.get("html", {})
