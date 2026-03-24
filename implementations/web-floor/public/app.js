@@ -97,7 +97,8 @@ const ui = {
   agentsList: document.querySelector("#agentsList"),
   conversation: document.querySelector("#conversation"),
   eventLog: document.querySelector("#eventLog"),
-  errorLog: document.querySelector("#errorLog")
+  errorLog: document.querySelector("#errorLog"),
+  htmlPopupArea: document.querySelector("#htmlPopupArea")
 };
 
 const state = {
@@ -750,7 +751,7 @@ function resolveDirectedAddresseeForEvent(event, fallbackDirectedAddressee = nul
 function openHtmlInPopup(htmlContent) {
   if (!htmlContent) return;
 
-  const blob = new Blob([htmlContent], { type: "text/html" });
+  const blob = new Blob([buildInteractivePopupHtml(htmlContent)], { type: "text/html" });
   const htmlUrl = URL.createObjectURL(blob);
   const popupFeatures = "popup=yes,width=980,height=720,resizable=yes,scrollbars=yes";
   const popup = window.open(htmlUrl, "webFloorHtmlPopup", popupFeatures);
@@ -770,7 +771,137 @@ function openHtmlInPopup(htmlContent) {
   }, 60000);
 }
 
+function buildInteractivePopupHtml(htmlContent) {
+  const content = typeof htmlContent === "string" ? htmlContent : "";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent HTML Response</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #fff; color: #111827; }
+    #toolbar { position: sticky; top: 0; z-index: 10; background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 12px; }
+    #popupBackBtn { border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827; padding: 6px 12px; cursor: pointer; }
+    #popupBackBtn[hidden] { display: none; }
+    #content { padding: 10px 12px; }
+    #content img { max-width: 100%; height: auto; }
+    body.image-view-active { background: #000; }
+    body.image-view-active #toolbar { background: rgba(17, 24, 39, 0.92); border-bottom-color: rgba(255, 255, 255, 0.14); }
+    body.image-view-active #popupBackBtn { background: #111827; color: #fff; border-color: rgba(255, 255, 255, 0.18); }
+    body.image-view-active #content { min-height: calc(100vh - 58px); padding: 0; display: flex; align-items: center; justify-content: center; }
+    .popup-image-view { width: 100%; height: calc(100vh - 58px); display: flex; align-items: center; justify-content: center; background: #000; }
+    .popup-image-view img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="popupBackBtn" type="button" hidden>\u2190 Back</button>
+  </div>
+  <div id="content">${content}</div>
+  <script>
+    (function () {
+      const contentRoot = document.getElementById("content");
+      const backBtn = document.getElementById("popupBackBtn");
+      const imageHistory = [];
+
+      function updateBackButton() {
+        backBtn.hidden = imageHistory.length === 0;
+      }
+
+      function toAbsoluteUrl(value) {
+        try {
+          return new URL(value, window.location.href).href;
+        } catch (_error) {
+          return "";
+        }
+      }
+
+      function getLinkedImageUrl(img) {
+        if (!img) return "";
+
+        const anchor = img.closest("a[href]");
+        if (anchor && anchor.getAttribute("href")) {
+          return toAbsoluteUrl(anchor.getAttribute("href"));
+        }
+
+        const possibleAttrs = ["data-full", "data-full-src", "data-href", "data-link", "data-large", "data-original"];
+        for (const attr of possibleAttrs) {
+          const value = img.getAttribute(attr);
+          if (value) return toAbsoluteUrl(value);
+        }
+
+        return "";
+      }
+
+      backBtn.addEventListener("click", function () {
+        const previous = imageHistory.pop();
+        if (!previous) {
+          document.body.classList.remove("image-view-active");
+          updateBackButton();
+          return;
+        }
+
+        contentRoot.innerHTML = previous.html;
+        document.body.classList.toggle("image-view-active", !!previous.imageViewActive);
+
+        updateBackButton();
+      });
+
+      contentRoot.addEventListener("click", function (event) {
+        const targetElement = event.target;
+        const img = targetElement && targetElement.closest ? targetElement.closest("img") : null;
+        if (!img || !contentRoot.contains(img)) return;
+
+        const linkedUrl = getLinkedImageUrl(img);
+        if (!linkedUrl) return;
+
+        const currentSrc = img.currentSrc || img.getAttribute("src") || "";
+        if (!currentSrc || linkedUrl === currentSrc) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        imageHistory.push({
+          html: contentRoot.innerHTML,
+          imageViewActive: document.body.classList.contains("image-view-active")
+        });
+
+        contentRoot.innerHTML = '<div class="popup-image-view"><img src="' + linkedUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;") + '" alt="Expanded image"></div>';
+        document.body.classList.add("image-view-active");
+        updateBackButton();
+      }, true);
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = null } = {}) {
+  function queueHtmlPopupButton(htmlContent, senderName) {
+    if (!htmlContent || !ui.htmlPopupArea) return;
+
+    const blob = new Blob([buildInteractivePopupHtml(htmlContent)], { type: "text/html" });
+    const htmlUrl = URL.createObjectURL(blob);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "html-popup-btn";
+    btn.textContent = `\u{1F4C4} View ${senderName || "agent"} response \u2192`;
+    btn.addEventListener("click", () => {
+      const popup = window.open(htmlUrl, "webFloorHtmlPopup", "popup=yes,width=980,height=720,resizable=yes,scrollbars=yes");
+      if (!popup) {
+        logError("Popup blocked. Please allow popups for this page in your browser.");
+      } else {
+        btn.remove();
+        setTimeout(() => { try { URL.revokeObjectURL(htmlUrl); } catch (_) {} }, 60000);
+      }
+    });
+
+    ui.htmlPopupArea.appendChild(btn);
+  }
+
   const events = responseData?.openFloor?.events || [];
 
   for (const event of events) {
@@ -841,7 +972,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
 
       const htmlTokens = dialog?.features?.html?.tokens || [];
       if (htmlTokens.length && htmlTokens[0]?.value) {
-        openHtmlInPopup(htmlTokens[0].value);
+        queueHtmlPopupButton(htmlTokens[0].value, displayName);
       }
     }
   }
