@@ -1,12 +1,12 @@
 const KNOWN_AGENTS = [
-  { url: "http://localhost:8767/", conversationalName: "Stella" },
+  { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella (Vercel)" },
+  { url: "http://localhost:8767/", conversationalName: "Stella (local 8767)" },
   { url: "http://localhost:8768/verity/", conversationalName: "Verity" },
   { url: "http://localhost:8769/", conversationalName: "GeminiGeo" },
   { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
   { url: "http://localhost:8082/", conversationalName: "Erin" },
   { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
-  { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella" },
   { url: "http://localhost:8083/", conversationalName: "Finn" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
@@ -879,6 +879,15 @@ function buildInteractivePopupHtml(htmlContent) {
 }
 
 function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = null } = {}) {
+  let normalizedResponse = responseData;
+  if (typeof normalizedResponse === "string") {
+    try {
+      normalizedResponse = JSON.parse(normalizedResponse);
+    } catch (_error) {
+      normalizedResponse = {};
+    }
+  }
+
   function queueHtmlPopupButton(htmlContent, senderName) {
     if (!htmlContent || !ui.htmlPopupArea) return;
 
@@ -902,7 +911,16 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
     ui.htmlPopupArea.appendChild(btn);
   }
 
-  const events = responseData?.openFloor?.events || [];
+  const envelope = normalizedResponse?.openFloor || normalizedResponse?.ovon || normalizedResponse?.openfloor || normalizedResponse || {};
+  const events = Array.isArray(envelope?.events) ? envelope.events : [];
+
+  if (!events.length) {
+    logError(`Incoming response from ${targetUrl} resolved to an empty events list`, {
+      topLevelKeys: normalizedResponse && typeof normalizedResponse === "object" ? Object.keys(normalizedResponse) : [],
+      resolvedEnvelopeKey: normalizedResponse?.openFloor ? "openFloor" : normalizedResponse?.ovon ? "ovon" : normalizedResponse?.openfloor ? "openfloor" : "top-level",
+      resolvedEventCount: Array.isArray(envelope?.events) ? envelope.events.length : 0
+    });
+  }
 
   for (const event of events) {
     const eventType = event?.eventType || "";
@@ -912,7 +930,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
       continue;
     }
 
-    if (eventType === "publishManifests") {
+    if (eventType === "publishManifests" || eventType === "publishManifest") {
       const manifests = event?.parameters?.servicingManifests || [];
       if (!manifests.length) continue;
 
@@ -978,8 +996,33 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
   }
 
   if (ui.showIncoming.checked) {
-    logEvent(`Incoming from ${targetUrl}`, responseData);
+    logEvent(`Incoming from ${targetUrl}`, normalizedResponse);
   }
+}
+
+function resolveAgentEnvelopeFromGatewayResponse(response) {
+  if (!response || typeof response !== "object") return null;
+
+  let candidate = response.json;
+
+  if (typeof candidate === "string") {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch (_error) {
+      candidate = null;
+    }
+  }
+
+  if (!candidate && typeof response.text === "string" && response.text.trim()) {
+    try {
+      candidate = JSON.parse(response.text);
+    } catch (_error) {
+      candidate = null;
+    }
+  }
+
+  if (!candidate || typeof candidate !== "object") return null;
+  return candidate;
 }
 
 async function sendControlEvent(eventType, agentUrl) {
@@ -1002,7 +1045,8 @@ async function sendControlEvent(eventType, agentUrl) {
     setAgentStatus(agentUrl, "idle");
   }
 
-  if (response.json) processIncomingEnvelope(response.json, agentUrl, { directedAddressee: null });
+  const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
+  if (responseEnvelope) processIncomingEnvelope(responseEnvelope, agentUrl, { directedAddressee: null });
   return true;
 }
 
@@ -1062,6 +1106,7 @@ async function sendEvents(eventTypes) {
   }
 
   const usePrivate = !ui.sendToAll.checked;
+  const timeoutMs = eventTypes.includes("utterance") ? 30000 : 10000;
 
   const sendTasks = targetUrls.map(async (targetUrl) => {
     if (eventTypes.includes("invite")) {
@@ -1074,10 +1119,16 @@ async function sendEvents(eventTypes) {
 
     const payload = buildEnvelopeForTarget(targetUrl, eventTypes, parsedUserInput, addressedAgent, usePrivate);
     if (ui.showOutgoing.checked) logEvent(`Outgoing to ${targetUrl}`, payload);
+    if (ui.showOutgoing.checked) {
+      logEvent(`Gateway timeout for ${targetUrl}`, {
+        eventTypes,
+        timeoutMs
+      });
+    }
 
     let response;
     try {
-      response = await proxySend(targetUrl, payload, 10000);
+      response = await proxySend(targetUrl, payload, timeoutMs);
     } catch (error) {
       setAgentStatus(targetUrl, "error");
       logError(`Request failed for ${targetUrl}`, String(error));
@@ -1092,8 +1143,9 @@ async function sendEvents(eventTypes) {
 
     setAgentStatus(targetUrl, "idle");
 
-    if (response.json) {
-      processIncomingEnvelope(response.json, targetUrl, { directedAddressee: addressedAgent });
+    const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
+    if (responseEnvelope) {
+      processIncomingEnvelope(responseEnvelope, targetUrl, { directedAddressee: addressedAgent });
     } else {
       logError(`Non-JSON response from ${targetUrl}`, response);
       setAgentStatus(targetUrl, "error");

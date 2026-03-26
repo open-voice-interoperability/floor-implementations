@@ -73,6 +73,15 @@
         </details>
       </div>
 
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Conversation History</h2>
+          <button id="clearConversationBtn" type="button">Clear Conversation</button>
+        </div>
+        <div id="htmlPopupArea"></div>
+        <pre id="conversation"></pre>
+      </section>
+
       <section class="panel controls utterance-controls">
         <label for="utteranceInput" class="utterance-label">Enter text for utterance</label>
         <input id="utteranceInput" placeholder="Type an utterance..." />
@@ -84,20 +93,6 @@
           </label>
           <button id="sendUtteranceBtn" disabled>Send Utterance</button>
         </div>
-
-        <div class="row options">
-          <label class="inline"><input type="checkbox" id="showIncoming" checked /> Show incoming envelopes in the event log</label>
-          <label class="inline"><input type="checkbox" id="showOutgoing" checked /> Show outgoing envelopes in the event log</label>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Conversation History</h2>
-          <button id="clearConversationBtn" type="button">Clear Conversation</button>
-        </div>
-        <div id="htmlPopupArea"></div>
-        <pre id="conversation"></pre>
       </section>
     </div>
 
@@ -112,6 +107,14 @@
       </div>
 
       <div id="diagnosticsContent" class="diagnostics-content">
+        <section class="panel controls">
+          <h2>Log Visibility</h2>
+          <div class="row options">
+            <label class="inline"><input type="checkbox" id="showIncoming" checked /> Show incoming envelopes in the event log</label>
+            <label class="inline"><input type="checkbox" id="showOutgoing" checked /> Show outgoing envelopes in the event log</label>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-header">
             <h2>Event Log</h2>
