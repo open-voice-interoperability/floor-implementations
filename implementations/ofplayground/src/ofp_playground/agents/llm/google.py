@@ -9,7 +9,7 @@ from ofp_playground.bus.message_bus import MessageBus
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
 
 
 class GoogleAgent(BaseLLMAgent):
@@ -67,10 +67,12 @@ class GoogleAgent(BaseLLMAgent):
         full_prompt = f"{system}\n\n{contents}"
 
         def _call():
+            from google.genai import types as gtypes
             client = genai.Client(api_key=self._api_key)
             response = client.models.generate_content(
                 model=self._model,
                 contents=full_prompt,
+                config=gtypes.GenerateContentConfig(max_output_tokens=self._max_tokens),
             )
             return response.text
 

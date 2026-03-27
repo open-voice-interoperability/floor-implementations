@@ -9,7 +9,7 @@ from ofp_playground.bus.message_bus import MessageBus
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4-nano"
 
 
 class OpenAIAgent(BaseLLMAgent):
@@ -48,12 +48,12 @@ class OpenAIAgent(BaseLLMAgent):
         client = self._get_client()
 
         def _call():
-            response = client.chat.completions.create(
+            response = client.responses.create(
                 model=self._model,
-                max_tokens=10,
-                messages=[{"role": "user", "content": prompt}],
+                input=prompt,
+                max_output_tokens=10,
             )
-            return response.choices[0].message.content or "NO"
+            return response.output_text or "NO"
 
         return await loop.run_in_executor(None, _call)
 
@@ -62,17 +62,18 @@ class OpenAIAgent(BaseLLMAgent):
         loop = asyncio.get_event_loop()
         client = self._get_client()
         system = self._build_system_prompt(participants)
-        messages = [{"role": "system", "content": system}] + list(self._conversation_history[-20:])
+        history = list(self._conversation_history[-20:])
 
-        if len(messages) == 1:
-            messages.append({"role": "user", "content": "Please introduce yourself briefly."})
+        if not history:
+            history = [{"role": "user", "content": "Please introduce yourself briefly."}]
 
         def _call():
-            response = client.chat.completions.create(
+            response = client.responses.create(
                 model=self._model,
-                max_tokens=500,
-                messages=messages,
+                instructions=system,
+                input=history,
+                max_output_tokens=self._max_tokens,
             )
-            return response.choices[0].message.content
+            return response.output_text
 
         return await loop.run_in_executor(None, _call)
