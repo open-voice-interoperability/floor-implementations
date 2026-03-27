@@ -1,0 +1,4 @@
+{
+  "markdown.mermaid.enabled": true,
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+}

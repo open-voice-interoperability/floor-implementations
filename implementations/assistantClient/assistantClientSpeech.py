@@ -128,7 +128,7 @@ def send_event(event_type, input_type, input_value ):
             extracted_value = "No utterance event found"
             if utterance_event:
                 parameters = utterance_event.get("parameters", {})
-                dialog_event = parameters.get("dialogEvent", {})
+                dialog_event = parameters.get("dialogEvent") or utterance_event.get("dialogEvent", {})
                 features = dialog_event.get("features", {})
                 text_features = features.get("text", {})
                 tokens = text_features.get("tokens", [])

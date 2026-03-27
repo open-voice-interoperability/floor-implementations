@@ -2,3 +2,6 @@
 implementations/web-floor/__pycache__/flask_gateway.cpython-311.pyc
 
 .vercel
+implementations/assistantClient/assistantClientSpeech.py
+implementations/assistantClient/assistantClient-Pegasus.py
+implementations/assistantClient/assistantClient-Pegasus.py

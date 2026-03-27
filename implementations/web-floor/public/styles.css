@@ -249,7 +249,6 @@ input[type="text"],
 input:not([type]),
 select {
   width: 100%;
-  max-width: 700px;
   padding: 8px;
   border: 1px solid var(--input-border);
   border-radius: 6px;
@@ -320,6 +319,48 @@ button:disabled {
 
 #conversation {
   background: var(--conversation-bg);
+  font-size: clamp(1rem, 2.1vw, 1.15rem);
+}
+
+.conversation-container {
+  position: relative;
+  resize: both;
+  overflow: hidden;
+  border-radius: 6px;
+  min-height: 120px;
+  max-height: 80vh;
+  background: var(--conversation-bg);
+  width: 100%;
+}
+
+.conversation-container #htmlPopupArea {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 6px;
+}
+
+.conversation-container #conversation {
+  min-height: 120px;
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  background: transparent;
+  border-radius: 0;
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: se-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--primary-color) 50%);
+  border-radius: 0 0 6px 0;
+}
+
+.resize-handle:hover {
+  background: linear-gradient(135deg, transparent 50%, var(--primary-color-hover) 50%);
 }
 
 #errorLog {

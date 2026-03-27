@@ -8,6 +8,8 @@ const KNOWN_AGENTS = [
   { url: "http://localhost:8082/", conversationalName: "Erin" },
   { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
   { url: "http://localhost:8083/", conversationalName: "Finn" },
+  { url: "http://localhost:8084/", conversationalName: "Prudence" },
+  { url: "http://localhost:8085/", conversationalName: "Lucky" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
 ];
@@ -89,6 +91,7 @@ const ui = {
   inviteBtn: document.querySelector("#inviteBtn"),
   sendUtteranceBtn: document.querySelector("#sendUtteranceBtn"),
   clearConversationBtn: document.querySelector("#clearConversationBtn"),
+  copyConversationBtn: document.querySelector("#copyConversationBtn"),
   clearEventLogBtn: document.querySelector("#clearEventLogBtn"),
   clearErrorLogBtn: document.querySelector("#clearErrorLogBtn"),
   toggleDiagnosticsBtn: document.querySelector("#toggleDiagnosticsBtn"),
@@ -419,6 +422,21 @@ function updateSendButtonState() {
   ui.sendUtteranceBtn.disabled = state.invitedAgents.length === 0;
 }
 
+function scrollConversationToLatest() {
+  if (!ui.conversation) return;
+
+  const container = ui.conversation.closest(".conversation-container");
+  const applyScroll = () => {
+    ui.conversation.scrollTop = ui.conversation.scrollHeight;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  };
+
+  applyScroll();
+  requestAnimationFrame(applyScroll);
+}
+
 function updateConversationHistory(speaker, text, speakerUri = "", utteranceId = "") {
   if (utteranceId && state.processedUtteranceIds.has(utteranceId)) return;
 
@@ -430,7 +448,7 @@ function updateConversationHistory(speaker, text, speakerUri = "", utteranceId =
   const line = `${lineNo}. [${displaySpeaker.toUpperCase()}] ${text}`;
   if (ui.conversation.textContent.trim()) ui.conversation.textContent += "\n\n";
   ui.conversation.textContent += line;
-  ui.conversation.scrollTop = ui.conversation.scrollHeight;
+  scrollConversationToLatest();
 }
 
 function clearConversationHistory() {
@@ -992,6 +1010,64 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
       if (htmlTokens.length && htmlTokens[0]?.value) {
         queueHtmlPopupButton(htmlTokens[0].value, displayName);
       }
+
+      // Rebroadcast incoming agent utterances to other agents as OFP messages.
+      if (speakerUri && speakerUri !== "Unknown" && speakerUri !== state.clientUri) {
+        const otherAgentUrls = state.invitedAgents
+          .map(agent => agent.url)
+          .filter(url => normalizeAgentId(url) !== normalizeAgentId(targetUrl));
+
+        if (otherAgentUrls.length > 0) {
+          const rebroadcastEvent = {
+            eventType: "utterance",
+            parameters: {
+              dialogEvent: JSON.parse(JSON.stringify(dialog || {}))
+            }
+          };
+
+          // Send OFP envelopes to all other agents and process their responses.
+          otherAgentUrls.forEach(otherUrl => {
+            const broadcastPayload = {
+              openFloor: {
+                conversation: serializeConversation(),
+                sender: {
+                  speakerUri: state.clientUri,
+                  serviceUrl: state.clientUrl
+                },
+                events: [{
+                  ...rebroadcastEvent,
+                  to: {
+                    serviceUrl: otherUrl,
+                    private: false
+                  }
+                }]
+              }
+            };
+
+            proxySend(otherUrl, broadcastPayload, 10000)
+              .then((response) => {
+                if (!response?.ok) {
+                  if (ui.showOutgoing.checked) {
+                    logError(`Broadcast request failed for ${otherUrl}`, response);
+                  }
+                  return;
+                }
+
+                const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
+                if (responseEnvelope) {
+                  processIncomingEnvelope(responseEnvelope, otherUrl);
+                } else if (ui.showOutgoing.checked) {
+                  logError(`Non-JSON broadcast response from ${otherUrl}`, response);
+                }
+              })
+              .catch(error => {
+                if (ui.showOutgoing.checked) {
+                  logError(`Failed to broadcast utterance to ${otherUrl}`, String(error));
+                }
+              });
+          });
+        }
+      }
     }
   }
 
@@ -1077,16 +1153,32 @@ async function sendEvents(eventTypes) {
       return;
     }
 
-    addressedAgent = findAddressedAgentInUtterance(userInput);
-    if (addressedAgent && state.invitedAgents.length) {
-      if (isUrlLike(addressedAgent.name)) {
-        addressedAgent.name = resolveDisplayNameForTarget(addressedAgent.url || urlFromSpeakerUri(addressedAgent.speaker_uri), addressedAgent.speaker_uri);
-      }
-      parsedUserInput = parseUtteranceForAddressedAgent(userInput, addressedAgent);
-      targetUrls = state.invitedAgents.map((agent) => agent.url);
+    // Always render the user's utterance locally, even if downstream parsing/sending fails.
+    try {
+      updateConversationHistory("You", userInput);
+    } catch (error) {
+      // Last-resort UI fallback so user text is still visible in conversation history.
+      const fallbackLineNo = state.conversationHistory.length + 1;
+      const fallbackLine = `${fallbackLineNo}. [YOU] ${userInput}`;
+      state.conversationHistory.push({ speaker: "You", speakerUri: "You", text: userInput });
+      if (ui.conversation.textContent.trim()) ui.conversation.textContent += "\n\n";
+      ui.conversation.textContent += fallbackLine;
+      ui.conversation.scrollTop = ui.conversation.scrollHeight;
+      logError("Failed to render user utterance via standard formatter; used fallback", String(error));
     }
 
-    updateConversationHistory("You", userInput);
+    try {
+      addressedAgent = findAddressedAgentInUtterance(userInput);
+      if (addressedAgent && state.invitedAgents.length) {
+        if (isUrlLike(addressedAgent.name)) {
+          addressedAgent.name = resolveDisplayNameForTarget(addressedAgent.url || urlFromSpeakerUri(addressedAgent.speaker_uri), addressedAgent.speaker_uri);
+        }
+        parsedUserInput = parseUtteranceForAddressedAgent(userInput, addressedAgent);
+        targetUrls = state.invitedAgents.map((agent) => agent.url);
+      }
+    } catch (error) {
+      logError("Failed to parse addressed agent in utterance", String(error));
+    }
   }
 
   if (!targetUrls.length) {
@@ -1168,6 +1260,17 @@ function bindEvents() {
   });
   ui.sendUtteranceBtn.addEventListener("click", () => sendEvents(["utterance"]));
   ui.clearConversationBtn.addEventListener("click", clearConversationHistory);
+  if (ui.copyConversationBtn) {
+    ui.copyConversationBtn.addEventListener("click", () => {
+      const text = ui.conversation ? ui.conversation.textContent : "";
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = ui.copyConversationBtn;
+        const original = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      }).catch(() => {});
+    });
+  }
   ui.clearEventLogBtn.addEventListener("click", clearEventLog);
   ui.clearErrorLogBtn.addEventListener("click", clearErrorLog);
 
