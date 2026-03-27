@@ -5,3 +5,6 @@ try:
 	from api.flask_gateway import app
 except ModuleNotFoundError:
 	from flask_gateway import app
+
+# Explicit export for Vercel
+__all__ = ["app"]
