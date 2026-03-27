@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from openfloor import Envelope
+from openfloor import Capability, Envelope, Identification, Manifest, SupportedLayers
 
 from ofp_playground.agents.base import BasePlaygroundAgent
 from ofp_playground.bus.message_bus import MessageBus
@@ -45,7 +45,25 @@ class VideoAgent(BasePlaygroundAgent):
         self._api_key = api_key
         self._has_floor = False
         self._last_text: Optional[str] = None
-        OUTPUT_DIR.mkdir(exist_ok=True)
+        self._output_dir: Path = OUTPUT_DIR
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _build_manifest(self) -> Manifest:
+        return Manifest(
+            identification=Identification(
+                speakerUri=self._speaker_uri,
+                serviceUrl=self._service_url,
+                conversationalName=self._name,
+                role="Video generation agent",
+            ),
+            capabilities=[
+                Capability(
+                    keyphrases=["text-to-video", "video-generation"],
+                    descriptions=[self._style],
+                    supportedLayers=SupportedLayers(input=["text"], output=["video"]),
+                )
+            ],
+        )
 
     def _build_prompt(self, text: str) -> str:
         """Combine conversation text with the artist's style into a video prompt."""
@@ -62,10 +80,13 @@ class VideoAgent(BasePlaygroundAgent):
             client = InferenceClient(token=self._api_key)
             return client.text_to_video(prompt, model=self._model)
 
+        async def _coro():
+            return await loop.run_in_executor(None, _call)
+
         try:
-            video_bytes = await loop.run_in_executor(None, _call)
+            video_bytes = await self._call_with_retry(_coro)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = OUTPUT_DIR / f"{ts}_{self._name.lower()}.mp4"
+            path = self._output_dir / f"{ts}_{self._name.lower()}.mp4"
             path.write_bytes(video_bytes)
             return path
         except Exception as e:
@@ -75,6 +96,15 @@ class VideoAgent(BasePlaygroundAgent):
     async def _handle_utterance(self, envelope: Envelope) -> None:
         sender_uri = self._get_sender_uri(envelope)
         if sender_uri == self.speaker_uri:
+            return
+        if sender_uri and "floor-manager" in sender_uri:
+            # Check for orchestrator [DIRECTIVE for Name]: instruction
+            text = self._extract_text_from_envelope(envelope)
+            if text:
+                m = re.search(rf"\[DIRECTIVE for {re.escape(self._name)}\]:\s*(.+)", text, re.IGNORECASE)
+                if m:
+                    self._last_text = m.group(1).strip()
+                    # Orchestrator will explicitly grant floor — don't request
             return
         text = self._extract_text_from_envelope(envelope)
         if not text:
@@ -91,8 +121,12 @@ class VideoAgent(BasePlaygroundAgent):
                 logger.info("[%s] Generating video: %s", self._name, prompt[:80])
                 path = await self._generate_video(prompt)
                 if path:
-                    msg = f"[{self._name}] Generated: {path.resolve()}\nPrompt: {prompt[:120]}"
-                    await self.send_envelope(self._make_utterance_envelope(msg))
+                    text_desc = f"Generated video for: {prompt[:200]}"
+                    await self.send_envelope(
+                        self._make_media_utterance_envelope(
+                            text_desc, "video", "video/mp4", str(path.resolve())
+                        )
+                    )
         except Exception as e:
             logger.error("[%s] Floor grant error: %s", self._name, e)
         finally:
@@ -109,10 +143,27 @@ class VideoAgent(BasePlaygroundAgent):
                 await self._handle_grant_floor()
             elif event_type == "revokeFloor":
                 self._has_floor = False
+            elif event_type == "invite":
+                from openfloor import Event, To
+                from ofp_playground.bus.message_bus import FLOOR_MANAGER_URI
+                accept_envelope = Envelope(
+                    sender=self._make_sender(),
+                    conversation=self._make_conversation(),
+                    events=[Event(
+                        eventType="acceptInvite",
+                        to=To(speakerUri=FLOOR_MANAGER_URI),
+                        reason="Ready to participate",
+                    )],
+                )
+                await self.send_envelope(accept_envelope)
+            elif event_type == "uninvite":
+                logger.info("[%s] received uninvite — stopping", self._name)
+                self._running = False
 
     async def run(self) -> None:
         self._running = True
         await self._bus.register(self.speaker_uri, self._queue)
+        await self._publish_manifest()
 
         try:
             while self._running:
