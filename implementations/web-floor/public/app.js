@@ -1,3 +1,16 @@
+// Configurable delay (in milliseconds) per word. After a message is posted, the next message
+// will be delayed by (word_count * MESSAGE_DISPLAY_DELAY_MS_PER_WORD) milliseconds to give
+// the user time to read the previous message. Set to 0 to disable delay.
+const MESSAGE_DISPLAY_DELAY_MS_PER_WORD = 100;
+
+// Internal message queue and timing tracking for display delays
+const messageQueue = {
+  queue: [],
+  lastDisplayTime: 0,
+  lastMessageWordCount: 0,
+  isProcessing: false
+};
+
 const KNOWN_AGENTS = [
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella (Vercel)" },
   { url: "http://localhost:8767/", conversationalName: "Stella (local 8767)" },
@@ -437,23 +450,72 @@ function scrollConversationToLatest() {
   requestAnimationFrame(applyScroll);
 }
 
-function updateConversationHistory(speaker, text, speakerUri = "", utteranceId = "") {
+function updateConversationHistory(speaker, text, speakerUri = "", utteranceId = "", isUserUtterance = false) {
   if (utteranceId && state.processedUtteranceIds.has(utteranceId)) return;
 
   const displaySpeaker = resolveHistorySpeakerName(speaker, speakerUri);
+  const lastEntry = state.conversationHistory[state.conversationHistory.length - 1];
+  const isPeerAddressed = (value) => /^[a-z][a-z0-9 _-]{0,40}:\s+/i.test((value || "").trim());
+  if (
+    !isUserUtterance
+    && lastEntry
+    && lastEntry.speaker === displaySpeaker
+    && isPeerAddressed(lastEntry.text)
+    && isPeerAddressed(text)
+  ) {
+    return;
+  }
+
   state.conversationHistory.push({ speaker: displaySpeaker, speakerUri: speakerUri || displaySpeaker, text });
   if (utteranceId) state.processedUtteranceIds.add(utteranceId);
 
   const lineNo = state.conversationHistory.length;
   const line = `${lineNo}. [${displaySpeaker.toUpperCase()}] ${text}`;
-  if (ui.conversation.textContent.trim()) ui.conversation.textContent += "\n\n";
-  ui.conversation.textContent += line;
-  scrollConversationToLatest();
+  const wordCount = text.trim().split(/\s+/).length;
+
+  // Queue the message for display with delay management
+  // Only apply delay for agent messages, not user messages
+  messageQueue.queue.push({ line, wordCount, isUserMessage: isUserUtterance });
+  processMessageQueue();
+}
+
+function processMessageQueue() {
+  if (messageQueue.isProcessing || messageQueue.queue.length === 0) return;
+
+  messageQueue.isProcessing = true;
+  const { line, wordCount, isUserMessage } = messageQueue.queue.shift();
+
+  // User messages display immediately; agent messages are delayed based on previous message's word count
+  const requiredDelay = (!isUserMessage && MESSAGE_DISPLAY_DELAY_MS_PER_WORD > 0)
+    ? messageQueue.lastMessageWordCount * MESSAGE_DISPLAY_DELAY_MS_PER_WORD
+    : 0;
+
+  const timeSinceLastDisplay = Date.now() - messageQueue.lastDisplayTime;
+  const delayNeeded = Math.max(0, requiredDelay - timeSinceLastDisplay);
+
+  setTimeout(() => {
+    // Display the message
+    if (ui.conversation.textContent.trim()) ui.conversation.textContent += "\n\n";
+    ui.conversation.textContent += line;
+    scrollConversationToLatest();
+
+    // Update timing info for next message
+    messageQueue.lastDisplayTime = Date.now();
+    messageQueue.lastMessageWordCount = wordCount;
+
+    // Process any queued messages
+    messageQueue.isProcessing = false;
+    processMessageQueue();
+  }, delayNeeded);
 }
 
 function clearConversationHistory() {
   state.conversationHistory = [];
   state.processedUtteranceIds.clear();
+  messageQueue.queue = [];
+  messageQueue.lastDisplayTime = 0;
+  messageQueue.lastMessageWordCount = 0;
+  messageQueue.isProcessing = false;
   ui.conversation.textContent = "";
 }
 
@@ -1155,7 +1217,7 @@ async function sendEvents(eventTypes) {
 
     // Always render the user's utterance locally, even if downstream parsing/sending fails.
     try {
-      updateConversationHistory("You", userInput);
+      updateConversationHistory("You", userInput, "", "", true);
     } catch (error) {
       // Last-resort UI fallback so user text is still visible in conversation history.
       const fallbackLineNo = state.conversationHistory.length + 1;

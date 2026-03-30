@@ -328,7 +328,7 @@ button:disabled {
   overflow: hidden;
   border-radius: 6px;
   min-height: 120px;
-  max-height: 80vh;
+  max-height: min(80vh, 34lh);
   background: var(--conversation-bg);
   width: 100%;
 }
@@ -342,7 +342,7 @@ button:disabled {
 
 .conversation-container #conversation {
   min-height: 120px;
-  max-height: calc(100% - 16px);
+  max-height: min(calc(100% - 16px), 32lh);
   overflow: auto;
   background: transparent;
   border-radius: 0;
