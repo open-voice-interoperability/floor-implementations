@@ -9,6 +9,7 @@ import requests
 from datetime import datetime
 import socket
 import traceback
+import re
 
 from openfloor import events,envelope,dialog_event,manifest,agent,DialogEvent,Conversation
 from openfloor import OpenFloorEvents, OpenFloorAgent, BotAgent
@@ -39,6 +40,9 @@ agent_textboxes = []  # List to keep track of individual agent textboxes
 revoked_agents = []  # List to keep track of agents whose floor has been revoked
 agent_checkboxes = {}  # Dictionary to track checkboxes: {agent_url: checkbox_widget}
 manifest_cache = {}  # Dictionary to cache conversational names from manifests: {url: conversational_name}
+
+ADVISOR_AGENT_NAMES = {"lucky", "prudence"}
+INFORMATION_AGENT_NAMES = {"finn", "financial"}
 
 # Global conversation to track conversants across the session
 global_conversation = Conversation()
@@ -212,6 +216,82 @@ def extract_url_from_agent_info(agent_info):
     # Backwards compatibility: if agent_info is just a string URL
     return agent_info
 
+
+def _normalize_agent_name(value):
+    return (value or "").strip().lower()
+
+
+def _display_name_for_agent(agent_info):
+    if isinstance(agent_info, dict):
+        name = (agent_info.get("conversational_name") or "").strip()
+        if name:
+            return name
+
+    agent_url = extract_url_from_agent_info(agent_info)
+    if agent_url in manifest_cache:
+        return manifest_cache[agent_url]
+
+    cleaned = (agent_url or "").rstrip("/")
+    if not cleaned:
+        return ""
+    return cleaned.split("/")[-1]
+
+
+def _infer_agent_role(agent_info):
+    name = _normalize_agent_name(_display_name_for_agent(agent_info))
+    if name in ADVISOR_AGENT_NAMES:
+        return "advisor"
+    if name in INFORMATION_AGENT_NAMES:
+        return "information"
+    return "unknown"
+
+
+def _find_addressed_urls(user_input, candidate_urls):
+    if not user_input:
+        return []
+
+    addressed = []
+    trimmed = user_input.lstrip()
+    for agent_info in invited_agents:
+        agent_url = extract_url_from_agent_info(agent_info)
+        if not agent_url or agent_url not in candidate_urls:
+            continue
+
+        conversational_name = _display_name_for_agent(agent_info)
+        if not conversational_name:
+            continue
+
+        pattern = rf"^{re.escape(conversational_name)}(?:\b|[\s,:;.!?\-])"
+        if re.match(pattern, trimmed, flags=re.IGNORECASE):
+            addressed.append(agent_url)
+
+    # Preserve original target order.
+    return [url for url in candidate_urls if url in set(addressed)]
+
+
+def _apply_floor_routing_rules_for_utterance(user_input, target_urls, send_to_all):
+    """Apply advisor/information floor routing rules for utterances.
+
+    Rules applied here:
+    - If directly addressed by name, only addressed agents respond.
+    - For unaddressed broadcast, advisors respond by default.
+    - Information agents stay silent unless directly addressed or they are the only agent.
+    """
+    if not target_urls:
+        return target_urls
+
+    addressed_urls = _find_addressed_urls(user_input, target_urls)
+    if addressed_urls:
+        return addressed_urls
+
+    # Keep explicit per-agent checkbox sends unchanged unless there is direct addressing.
+    if not send_to_all:
+        return target_urls
+
+    # For unaddressed broadcasts, send to all agents (advisors and information agents).
+    # Each information agent decides internally whether to respond based on whether it was directly addressed.
+    return target_urls
+
 def add_conversant_to_global(agent_url):
     """Add a conversant to the global conversation."""
     global global_conversation
@@ -241,6 +321,7 @@ def remove_conversant_from_global(agent_url):
 def update_conversation_history(speaker, text, speaker_uri=None, utterance_id=None):
     """Update the conversation history text area with a new utterance."""
     global conversation_history_for_context, processed_utterance_ids
+    scroll_threshold_lines = 20
     
     # Skip if we've already processed this utterance
     if utterance_id and utterance_id in processed_utterance_ids:
@@ -263,8 +344,9 @@ def update_conversation_history(speaker, text, speaker_uri=None, utterance_id=No
     # Use uppercase and special formatting to make speaker names stand out, with number
     conversation_text.insert("end", f"{utterance_number}. [{speaker.upper()}] {text}")
     conversation_text.configure(state='disabled')
-    # Auto-scroll to bottom
-    conversation_text.see("end")
+    line_count = len(conversation_text.get("1.0", "end-1c").split("\n"))
+    if line_count >= scroll_threshold_lines:
+        conversation_text.see("end")
 
 def update_agent_textbox(textbox, new_info):
     """Update an existing agent textbox with new information."""
@@ -528,6 +610,14 @@ def send_events(event_types):
         # If all target URLs are already invited, don't send anything
         if not new_invite_urls and "invite" in event_types and len(event_types) == 1:
             return
+
+    # Route utterances through the advisor/information floor rules.
+    if "utterance" in event_types:
+        target_urls = _apply_floor_routing_rules_for_utterance(
+            user_input=user_input,
+            target_urls=target_urls,
+            send_to_all=send_to_all,
+        )
     
     if not target_urls:
         # Note: for utterances we send to invited agents (or selected private-agent checkboxes),

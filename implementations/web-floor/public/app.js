@@ -341,39 +341,93 @@ function resolveSpeakerUriForAgentUrl(agentUrl) {
   return `agent:${agentUrl}`;
 }
 
+function isPlaceholderSpeakerUri(value) {
+  if (!value || typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized.startsWith("agent:http://") || normalized.startsWith("agent:https://");
+}
+
+function preferredSpeakerUri(existingSpeakerUri, newSpeakerUri, serviceUrl = "") {
+  if (!newSpeakerUri) return existingSpeakerUri || "";
+  if (!existingSpeakerUri) return newSpeakerUri;
+  if (isPlaceholderSpeakerUri(existingSpeakerUri)) return newSpeakerUri;
+  if (serviceUrl && normalizeAgentId(existingSpeakerUri) === normalizeAgentId(serviceUrl)) return newSpeakerUri;
+  return existingSpeakerUri;
+}
+
 function addConversantToGlobal(agentUrl, conversationalName = "", speakerUri = "") {
-  if (!agentUrl) return;
-  const normalizedTarget = normalizeAgentId(agentUrl);
+  const cleanedAgentUrl = cleanUrlCandidate(agentUrl) || urlFromSpeakerUri(speakerUri);
+  const normalizedTarget = normalizeAgentId(cleanedAgentUrl);
+  const normalizedSpeaker = normalizeAgentId(speakerUri);
+  const matches = [];
 
   for (const conversant of state.globalConversation.conversants) {
     const identification = conversant.identification || {};
-    if (normalizeAgentId(identification.serviceUrl) === normalizedTarget) {
-      if (conversationalName && (!identification.conversationalName || isUrlLike(identification.conversationalName))) {
-        identification.conversationalName = conversationalName;
+    const serviceMatch = normalizedTarget && normalizeAgentId(identification.serviceUrl) === normalizedTarget;
+    const speakerMatch = normalizedSpeaker && normalizeAgentId(identification.speakerUri) === normalizedSpeaker;
+    if (serviceMatch || speakerMatch) matches.push(conversant);
+  }
+
+  let primary = matches[0];
+  if (!primary) {
+    const seedUrl = cleanedAgentUrl || urlFromSpeakerUri(speakerUri);
+    primary = {
+      identification: {
+        speakerUri: speakerUri || (seedUrl ? `agent:${seedUrl}` : ""),
+        serviceUrl: seedUrl || "",
+        organization: "Unknown",
+        conversationalName: "",
+        synopsis: `Conversant endpoint at ${seedUrl || "unknown"}`
       }
-      if (speakerUri && !identification.speakerUri) {
-        identification.speakerUri = speakerUri;
-      }
-      if (!identification.organization) {
-        identification.organization = "Unknown";
-      }
-      if (!identification.synopsis) {
-        identification.synopsis = `Conversant endpoint at ${agentUrl}`;
-      }
-      return;
+    };
+    state.globalConversation.conversants.push(primary);
+  }
+
+  const identification = primary.identification || (primary.identification = {});
+  const resolvedServiceUrl = cleanedAgentUrl || identification.serviceUrl || urlFromSpeakerUri(speakerUri) || "";
+  if (resolvedServiceUrl) {
+    identification.serviceUrl = resolvedServiceUrl;
+    identification.synopsis = `Conversant endpoint at ${resolvedServiceUrl}`;
+  }
+  identification.organization = identification.organization || "Unknown";
+  identification.speakerUri = preferredSpeakerUri(identification.speakerUri || "", speakerUri, resolvedServiceUrl) || identification.speakerUri || "";
+
+  if (conversationalName && !isUrlLike(conversationalName)) {
+    if (!identification.conversationalName || isUrlLike(identification.conversationalName)) {
+      identification.conversationalName = conversationalName;
+    }
+  } else if (!identification.conversationalName && resolvedServiceUrl) {
+    const fallbackName = resolveDisplayNameForTarget(resolvedServiceUrl, identification.speakerUri || "");
+    if (fallbackName && !isUrlLike(fallbackName)) {
+      identification.conversationalName = fallbackName;
     }
   }
 
-  const display = conversationalName || resolveDisplayNameForTarget(agentUrl, speakerUri || `agent:${agentUrl}`) || agentUrl;
-  state.globalConversation.conversants.push({
-    identification: {
-      speakerUri: speakerUri || `agent:${agentUrl}`,
-      serviceUrl: agentUrl,
-      organization: "Unknown",
-      conversationalName: display,
-      synopsis: `Conversant endpoint at ${agentUrl}`
-    }
-  });
+  for (const duplicate of matches.slice(1)) {
+    if (duplicate === primary) continue;
+    const duplicateId = duplicate.identification || {};
+    if (!identification.serviceUrl) identification.serviceUrl = duplicateId.serviceUrl || "";
+    if (!identification.speakerUri) identification.speakerUri = duplicateId.speakerUri || "";
+    if (!identification.conversationalName) identification.conversationalName = duplicateId.conversationalName || "";
+    state.globalConversation.conversants = state.globalConversation.conversants.filter((item) => item !== duplicate);
+  }
+}
+
+function syncGlobalConversationState() {
+  for (const agent of state.invitedAgents) {
+    addConversantToGlobal(agent.url, agent.conversationalName || "");
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const conversant of state.globalConversation.conversants) {
+    const identification = conversant?.identification || {};
+    const key = normalizeAgentId(identification.serviceUrl) || normalizeAgentId(identification.speakerUri);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(conversant);
+  }
+  state.globalConversation.conversants = deduped;
 }
 
 function removeConversantFromGlobal(agentUrl) {
@@ -535,18 +589,27 @@ function setDiagnosticsCollapsed(collapsed) {
   ui.toggleDiagnosticsBtn.setAttribute("aria-expanded", String(!collapsed));
 }
 
+function scrollLogToLatest(logElement) {
+  if (!logElement) return;
+  const applyScroll = () => {
+    logElement.scrollTop = logElement.scrollHeight;
+  };
+  applyScroll();
+  requestAnimationFrame(applyScroll);
+}
+
 function logEvent(message, payload = null) {
   const ts = new Date().toISOString();
   const chunk = payload ? `${message}\n${JSON.stringify(payload, null, 2)}` : message;
   ui.eventLog.textContent += `[${ts}] ${chunk}\n\n`;
-  ui.eventLog.scrollTop = ui.eventLog.scrollHeight;
+  scrollLogToLatest(ui.eventLog);
 }
 
 function logError(message, payload = null) {
   const ts = new Date().toISOString();
   const chunk = payload ? `${message}\n${JSON.stringify(payload, null, 2)}` : message;
   ui.errorLog.textContent += `[${ts}] ${chunk}\n\n`;
-  ui.errorLog.scrollTop = ui.errorLog.scrollHeight;
+  scrollLogToLatest(ui.errorLog);
 }
 
 function refreshKnownAgentList() {
@@ -649,6 +712,7 @@ function renderAgents() {
 }
 
 function serializeConversation() {
+  syncGlobalConversationState();
   return {
     id: state.globalConversation.id,
     conversants: state.globalConversation.conversants.map((item) => ({
@@ -711,7 +775,7 @@ function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent
           speakerUri: addressedAgent.speaker_uri,
           private: !!usePrivate
         };
-      } else {
+      } else if (usePrivate) {
         event.to = {
           serviceUrl: targetUrl,
           private: !!usePrivate
@@ -995,11 +1059,12 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
   const events = Array.isArray(envelope?.events) ? envelope.events : [];
 
   if (!events.length) {
-    logError(`Incoming response from ${targetUrl} resolved to an empty events list`, {
-      topLevelKeys: normalizedResponse && typeof normalizedResponse === "object" ? Object.keys(normalizedResponse) : [],
-      resolvedEnvelopeKey: normalizedResponse?.openFloor ? "openFloor" : normalizedResponse?.ovon ? "ovon" : normalizedResponse?.openfloor ? "openfloor" : "top-level",
-      resolvedEventCount: Array.isArray(envelope?.events) ? envelope.events.length : 0
-    });
+    if (ui.showOutgoing.checked) {
+      logEvent(`Agent at ${targetUrl} returned an empty events list (no response)`, {
+        topLevelKeys: normalizedResponse && typeof normalizedResponse === "object" ? Object.keys(normalizedResponse) : [],
+        resolvedEnvelopeKey: normalizedResponse?.openFloor ? "openFloor" : normalizedResponse?.ovon ? "ovon" : normalizedResponse?.openfloor ? "openfloor" : "top-level",
+      });
+    }
   }
 
   for (const event of events) {
@@ -1043,6 +1108,9 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
     if (eventType === "utterance") {
       const dialog = event?.parameters?.dialogEvent || event?.dialogEvent || {};
       const speakerUri = dialog?.speakerUri || "Unknown";
+      if (speakerUri && speakerUri !== "Unknown" && normalizeAgentId(speakerUri) !== normalizeAgentId(state.clientUri)) {
+        addConversantToGlobal(targetUrl || urlFromSpeakerUri(speakerUri), "", speakerUri);
+      }
       const displayName = resolveDisplayNameForTarget(targetUrl, speakerUri);
       const directedTarget = resolveDirectedAddresseeForEvent(event, directedAddressee);
 
@@ -1087,7 +1155,15 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
             }
           };
 
-          // Send OFP envelopes to all other agents and process their responses.
+          // Preserve explicit addressing when an agent intentionally targets
+          // another agent. The client still broadcasts this same event to all
+          // agents, and each recipient decides whether to act based on `to`.
+          if (event?.to && typeof event.to === "object") {
+            rebroadcastEvent.to = JSON.parse(JSON.stringify(event.to));
+          }
+
+          // Send OFP envelopes to all other agents via the client rebroadcast path.
+          // If `rebroadcastEvent.to` is present, only the addressed agent should respond.
           otherAgentUrls.forEach(otherUrl => {
             const broadcastPayload = {
               openFloor: {
@@ -1096,13 +1172,7 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
                   speakerUri: state.clientUri,
                   serviceUrl: state.clientUrl
                 },
-                events: [{
-                  ...rebroadcastEvent,
-                  to: {
-                    serviceUrl: otherUrl,
-                    private: false
-                  }
-                }]
+                events: [rebroadcastEvent]
               }
             };
 

@@ -1,0 +1,34 @@
+one agent and user
+If the agent knows the answer, it answers once
+if the agent doesn't know the answer, it says the question is outside of its expertise
+it doesn't matter whether the agent is addressed by the user or not or whether it is an information agent or an advisor agent
+
+two advisor agents and user
+the agents will not respond to out of domain questions unless the agent is directly addressed. If they are addressed with an out-of-domain question, they will answer that the question is outside of their expertise.
+If any agent is directly addressed only it will answer
+if the question is in domain for either or both agents, the agent will answer the in-domain question
+if two agents answer, they will also respond to each other's answers once, in addition to their own answers
+
+one advisor agent and one information agent
+the information agent will speak if only if it is directly addressed
+the advisor agents will offer an opinion on every question that's in their domain
+if the agent is an information agent and it is addressed, and it knows the answer, it answers
+if the agent is an information agent and it is addressed and it doesn't know the answer, it says the question is outside of its expertise
+
+two or more advisors one information agent and the user
+the information agent will speak if only if it is directly addressed
+advisor agents can answer if neither is addressed
+the second agent can answer and include a rebuttal, addressing the first agent
+the first agent gets a chance to rebutt the second one and add its own response, addressing the second agent
+the second agent can rebutt the rebuttal, addressing the first agent
+
+information agent (Finn):
+does not have opinions, only provides concrete information, does not argue 
+only speaks when directly addressed or is the only agent in the conversation
+
+advisor (Lucky, Prudence):
+provides opinions, argues
+
+
+
+
