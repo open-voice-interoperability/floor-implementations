@@ -1,0 +1,34 @@
+# STOCKOUT-local stack: Floor API + stock mock (no sibling FLOOR repo required at runtime).
+# From this folder: `docker compose up -d` then `curl -s http://localhost:8787/health`
+# and `curl -s http://localhost:8890/health`.
+
+services:
+  floor-api:
+    build:
+      context: ./services/floor_api
+      dockerfile: Dockerfile
+    container_name: stockout_floor_api
+    ports:
+      - "${STOCKOUT_FLOOR_PORT:-8787}:8000"
+    environment:
+      # Satisfy Settings defaults; Floor war-room routes are in-memory.
+      - POSTGRES_PASSWORD=demo-not-used
+      - SECRET_KEY=demo-not-used
+      - POSTGRES_HOST=127.0.0.1
+      - REDIS_HOST=127.0.0.1
+    networks:
+      - stockout_net
+
+  stock-mock:
+    build:
+      context: ./services/stock_mock
+      dockerfile: Dockerfile
+    container_name: stockout_stock_mock
+    ports:
+      - "${STOCKOUT_STOCK_PORT:-8890}:8890"
+    networks:
+      - stockout_net
+
+networks:
+  stockout_net:
+    driver: bridge

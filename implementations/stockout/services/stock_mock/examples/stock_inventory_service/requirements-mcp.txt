@@ -1,0 +1,3 @@
+# Optional: solo per `mcp_stdio.py` in locale (Cursor / CLI).
+# Non usare nel Dockerfile principale FLOOR: richiede anyio>=4.5, incompatibile con fastapi 0.104.x.
+mcp>=1.4.0,<2

@@ -1,0 +1,121 @@
+version: '3.8'
+
+# Multi-Agent Setup Example per Open Floor Protocol
+# Questo esempio mostra come configurare 3 agenti che collaborano
+
+services:
+  # Floor Manager e API principale
+  floor-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ofp_floor_api
+    environment:
+      - ENVIRONMENT=development
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ofp_network
+
+  # Agent 1: Text Generation Agent
+  agent-text:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ofp_agent_text
+    command: python -m src.agents.example_agent --speakerUri "tag:example.com,2025:text_agent" --port 8001
+    environment:
+      - FLOOR_API_URL=http://floor-api:8000
+      - SPEAKER_URI=tag:example.com,2025:text_agent
+      - SERVICE_URL=http://agent-text:8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - floor-api
+    networks:
+      - ofp_network
+
+  # Agent 2: Image Generation Agent
+  agent-image:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ofp_agent_image
+    command: python -m src.agents.example_agent --speakerUri "tag:example.com,2025:image_agent" --port 8002
+    environment:
+      - FLOOR_API_URL=http://floor-api:8000
+      - SPEAKER_URI=tag:example.com,2025:image_agent
+      - SERVICE_URL=http://agent-image:8002
+    ports:
+      - "8002:8002"
+    depends_on:
+      - floor-api
+    networks:
+      - ofp_network
+
+  # Agent 3: Data Analysis Agent
+  agent-data:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ofp_agent_data
+    command: python -m src.agents.example_agent --speakerUri "tag:example.com,2025:data_agent" --port 8003
+    environment:
+      - FLOOR_API_URL=http://floor-api:8000
+      - SPEAKER_URI=tag:example.com,2025:data_agent
+      - SERVICE_URL=http://agent-data:8003
+    ports:
+      - "8003:8003"
+    depends_on:
+      - floor-api
+    networks:
+      - ofp_network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ofp_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ofp_db}
+      POSTGRES_USER: ${POSTGRES_USER:-ofp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ofp_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ofp_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ofp_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ofp_redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ofp_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  ofp_network:
+    driver: bridge
+

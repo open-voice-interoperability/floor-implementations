@@ -1,0 +1,4 @@
+# Optional: MCP lite stock tool + Streamlit sidebar button (stdio server subprocess).
+# Install on top of requirements.txt when demoing MCP + stock:
+#   pip install -r requirements-mcp-demo.txt
+mcp>=1.4.0,<2
