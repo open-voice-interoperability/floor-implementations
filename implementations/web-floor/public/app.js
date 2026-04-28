@@ -1,7 +1,7 @@
 // Configurable delay (in milliseconds) per word. After a message is posted, the next message
 // will be delayed by (word_count * MESSAGE_DISPLAY_DELAY_MS_PER_WORD) milliseconds to give
 // the user time to read the previous message. Set to 0 to disable delay.
-const MESSAGE_DISPLAY_DELAY_MS_PER_WORD = 100;
+const MESSAGE_DISPLAY_DELAY_MS_PER_WORD = 150;
 
 // Internal message queue and timing tracking for display delays
 const messageQueue = {
@@ -19,6 +19,7 @@ const KNOWN_AGENTS = [
   { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
   { url: "http://localhost:8082/", conversationalName: "Erin" },
+  { url: "http://localhost:8086/", conversationalName: "Convener" },
   { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
   { url: "http://localhost:8083/", conversationalName: "Finn" },
   { url: "http://localhost:8084/", conversationalName: "Prudence" },
@@ -26,6 +27,36 @@ const KNOWN_AGENTS = [
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
 ];
+
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
+
+function rewriteLoopbackUrlForCurrentHost(urlValue) {
+  if (typeof window === "undefined") return urlValue;
+
+  const currentHost = (window.location.hostname || "").trim();
+  if (!currentHost) return urlValue;
+
+  const candidate = cleanUrlCandidate(urlValue);
+  if (!candidate) return urlValue;
+
+  try {
+    const parsed = new URL(candidate);
+    const hostname = (parsed.hostname || "").toLowerCase();
+    if (!LOOPBACK_HOSTNAMES.has(hostname)) return candidate;
+
+    parsed.hostname = currentHost;
+    return parsed.toString();
+  } catch (_error) {
+    return urlValue;
+  }
+}
+
+function buildRuntimeKnownAgents(agents) {
+  return (agents || []).map((agent) => ({
+    ...agent,
+    url: rewriteLoopbackUrlForCurrentHost(agent.url)
+  }));
+}
 
 function normalizeGatewayBaseUrl(value) {
   if (!value || typeof value !== "string") return "";
@@ -117,11 +148,16 @@ const ui = {
   htmlPopupArea: document.querySelector("#htmlPopupArea")
 };
 
+const RUNTIME_HOST = window.location.host || window.location.hostname || "localhost";
+const RUNTIME_CLIENT_URL = (window.location.origin && window.location.origin !== "null")
+  ? window.location.origin
+  : `http://${window.location.hostname || "localhost"}`;
+
 const state = {
   clientName: "AssistantClientConvenerWeb",
-  clientUrl: `http://${window.location.hostname}`,
-  clientUri: `openFloor://${window.location.hostname}/AssistantClientConvenerWeb`,
-  knownAgents: [...KNOWN_AGENTS],
+  clientUrl: RUNTIME_CLIENT_URL,
+  clientUri: `openFloor://${RUNTIME_HOST}/AssistantClientConvenerWeb`,
+  knownAgents: buildRuntimeKnownAgents(KNOWN_AGENTS),
   previousUrls: [],
   invitedAgents: [],
   revokedAgents: new Set(),
@@ -1072,6 +1108,22 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
 
     if (eventType === "uninvite") {
       removeInvitedAgent(targetUrl);
+      continue;
+    }
+
+    if (eventType === "invite") {
+      const inviteTargetUrl = event?.to?.serviceUrl;
+      if (inviteTargetUrl) {
+        const normalizedTarget = cleanUrlCandidate(inviteTargetUrl);
+        const alreadyInvited = state.invitedAgents.some(a => normalizeAgentId(a.url) === normalizeAgentId(normalizedTarget));
+        if (!alreadyInvited && normalizedTarget) {
+          updateConversationHistory("Floor", `Inviting ${knownNameForUrl(normalizedTarget) || normalizedTarget}...`);
+          addInvitedAgent(normalizedTarget);
+          sendControlEvent("invite", normalizedTarget).catch(err => {
+            logError(`Agent-initiated invite to ${normalizedTarget} failed`, String(err));
+          });
+        }
+      }
       continue;
     }
 
