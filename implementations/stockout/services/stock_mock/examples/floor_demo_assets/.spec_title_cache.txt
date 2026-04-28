@@ -1,0 +1,1 @@
+Open Floor Inter-Agent Message Specification Version 1.1.0
