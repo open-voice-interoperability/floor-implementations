@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: web-floor Flask gateway",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "program": "${workspaceFolder}/implementations/web-floor/api/flask_gateway.py",
+      "cwd": "${workspaceFolder}/implementations/web-floor",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "HOST": "0.0.0.0",
+        "PORT": "8090",
+        "DEBUG": "false"
+      }
+    }
+  ]
+}

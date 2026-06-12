@@ -1,0 +1,31 @@
+1. [FINN] Hi, I'm Finn. I can give you real-time stock information.
+
+2. [PRUDENCE] Hi, I'm Prudence. I can give you financial advice.How can I help you today?
+
+3. [LUCKY] Hi, I'm Lucky.  How can I help you today with your financial questions?
+
+4. [YOU] finn, what is the price for amazon today
+
+5. [YOU] finn, what is the price for amazon
+
+6. [FINN] AMZN is currently trading at $206.17, up 2.60% today.
+
+7. [YOU] what is the price for amazon
+
+8. [FINN] AMZN is currently trading at $206.17, up 2.60% today.
+
+9. [LUCKY] Finn: Absolutely! Dive into AMZN now—its growth potential is exciting! Grab shares and ride the momentum; this stock has the potential for significant upside!
+
+10. [PRUDENCE] Lucky: Investing heavily in one stock like AMZN is risky. Instead, prioritize diversification to protect your capital and consider a balanced portfolio to manage potential downturns effectively.
+
+11. [YOU] what do analysts say about amazon
+
+12. [FINN] Analyst recommendations for AMZN in 2026-03-01 are mostly bullish: 21 strong buy, 50 buy, 5 hold, 0 sell, and 0 strong sell.
+
+13. [PRUDENCE] Finn: Bullying into a single stock like AMZN exposes you to unnecessary risk. Diversify your investments to protect your capital and minimize potential losses.
+
+14. [LUCKY] Finn: Jump on that bullish momentum for AMZN! With so many analysts backing it, focus your investment there and embrace the potential for fantastic returns!
+
+15. [PRUDENCE] Lucky: Concentrating your investment in one stock like AMZN is risky. Instead, diversify your portfolio across various sectors to protect your capital and mitigate potential losses.
+
+16. [LUCKY] Prudence: Lucky: Embrace the thrill of AMZN—it has massive upside potential! Go all-in on this high-flyer; with calculated focus and a risk-tolerant mindset, you can ride the waves to success!

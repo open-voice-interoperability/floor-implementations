@@ -1447,13 +1447,37 @@ function bindEvents() {
   if (ui.copyConversationBtn) {
     ui.copyConversationBtn.addEventListener("click", () => {
       const text = ui.conversation ? ui.conversation.textContent : "";
-      navigator.clipboard.writeText(text).then(() => {
-        const btn = ui.copyConversationBtn;
-        const original = btn.textContent;
-        btn.textContent = "Copied!";
+      const btn = ui.copyConversationBtn;
+      const original = btn.textContent;
+
+      const showResult = (ok) => {
+        btn.textContent = ok ? "Copied!" : "Copy failed";
         setTimeout(() => { btn.textContent = original; }, 1500);
-      }).catch(() => {});
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => showResult(true)).catch(() => {
+          // clipboard API rejected (e.g. non-secure context) — fall back
+          showResult(fallbackCopyText(text));
+        });
+      } else {
+        showResult(fallbackCopyText(text));
+      }
     });
+  }
+
+  function fallbackCopyText(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+    return ok;
   }
   ui.clearEventLogBtn.addEventListener("click", clearEventLog);
   ui.clearErrorLogBtn.addEventListener("click", clearErrorLog);

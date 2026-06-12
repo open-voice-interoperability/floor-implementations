@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run web-floor Flask gateway",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "${workspaceFolder}/implementations/web-floor/api/flask_gateway.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/implementations/web-floor"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
