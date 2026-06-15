@@ -5,3 +5,9 @@ implementations/web-floor/__pycache__/flask_gateway.cpython-311.pyc
 implementations/assistantClient/assistantClientSpeech.py
 implementations/assistantClient/assistantClient-Pegasus.py
 implementations/assistantClient/assistantClient-Pegasus.py
+implementations/web-floor/1. \[CONVENER\] Hi, I'm Convener. How.txt
+implementations/web-floor/2. \[PRUDENCE\] Hi, I'm Prudence. I c.txt
+implementations/web-floor/docs/test-harness-design/cli-harness-architecture.md
+implementations/web-floor/docs/test-harness-design/desktop-harness-implementation-blueprint.md
+implementations/web-floor/docs/test-harness-design/desktop-harness-ui-spec.md
+implementations/web-floor/test.json

@@ -24,6 +24,37 @@ python api/flask_gateway.py
 
 Open: `http://localhost:8090`
 
+## Run independent CLI test harness
+The web-based test harness has been removed. Use the standalone Python harness launcher:
+
+```bash
+cd implementations/web-floor
+python ofp_test.py
+```
+
+The CLI is used only to launch `ofp_test.py`; all test setup and execution is handled in the GUI.
+
+### ofp_test UI at a glance
+
+The `ofp_test.py` window has two main areas:
+
+- Left side (Test Setup): choose event type, transport mode, timeout, known agents/custom URLs, and run controls.
+- Right side (Results): view per-request results, filter by agent/event/result, inspect JSON details, and open charts.
+
+Common actions:
+
+- Run/Stop requests to selected targets.
+- Append or clear results between runs.
+- Export results to JSON.
+- Open summary charts for event counts and processing time.
+
+Legacy headless CLI passthrough is still available for automation:
+
+```bash
+python ofp_test.py cli list-agents
+python ofp_test.py cli run --event getManifests --all-known --transport gateway
+```
+
 Optional environment variables:
 - `PORT` (default `8090`)
 - `HOST` (default `0.0.0.0`)
