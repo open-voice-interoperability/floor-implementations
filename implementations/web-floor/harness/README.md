@@ -37,22 +37,64 @@ You can test agents using either:
 
 - Known agents (checkbox list)
 - Custom agent URLs (one per line)
+- Agent file (Load Agent File)
 
 For local Verity, use this endpoint:
 
 - http://localhost:8768/verity/
+
+## 3a. Utterances File Formats
+
+The utterances file loader supports:
+
+- JSON list of strings
+- JSON object with an utterances list
+- Text/CSV file with one utterance per non-empty line
+
+Examples:
+
+```json
+["hello", "check this statement", "summarize this"]
+```
+
+```json
+{
+  "utterances": ["hello", "check this statement", "summarize this"]
+}
+```
+
+```text
+hello
+check this statement
+summarize this
+```
+
+When a file is loaded, each utterance is tested across selected agents (and repeat count).
+
+## 3b. Agent File Format
+
+The agent file should use the same format as `known_agents.json`: a JSON array of objects with `url` and `conversationalName` fields.
+
+```json
+[
+  {"url": "http://localhost:8768/verity/", "conversationalName": "Verity"},
+  {"url": "http://localhost:8082/", "conversationalName": "Erin"}
+]
+```
 
 ## 4. Configure A Test
 
 In the Test Setup panel:
 
 1. Select Event type.
-2. For utterance event type, fill Utterance.
+2. For utterance event type, either:
+  - fill Utterance directly, or
+  - load an utterances file with the Load button.
 3. Set Repeat count.
 4. Optionally set Expected contains for response text checks.
-5. Choose Transport mode:
-  - gateway: uses Flask proxy endpoint
+5. Choose Transport mode (default: direct):
   - direct: posts directly to agent URL
+  - gateway: uses Flask proxy endpoint
 6. If using gateway, confirm Gateway URL (default usually http://localhost:8090/api/proxy-send).
 7. Set Timeout ms.
 

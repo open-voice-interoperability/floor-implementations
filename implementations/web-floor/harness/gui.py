@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import csv
 import threading
 import time
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -60,6 +62,9 @@ class OFPTestHarnessApp:
         self.filter_agent_var = tk.StringVar(value="All")
         self.filter_event_var = tk.StringVar(value="All")
         self.filter_result_var = tk.StringVar(value="All")
+        self.utterance_file_var = tk.StringVar(value="")
+        self.agents_file_var = tk.StringVar(value="")
+        self.loaded_utterances: list[str] = []
 
         self._build_ui()
         self._populate_agents()
@@ -113,13 +118,38 @@ class OFPTestHarnessApp:
         self.utterance_entry = ttk.Entry(event_frame, textvariable=self.utterance_var)
         self.utterance_entry.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
 
-        ttk.Label(event_frame, text="Repeat").grid(row=2, column=0, sticky="w", pady=(8, 0))
-        self.repeat_var = tk.IntVar(value=1)
-        ttk.Spinbox(event_frame, from_=1, to=1000, textvariable=self.repeat_var, width=8).grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+        ttk.Label(event_frame, text="Utterances file").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        utterance_file_frame = ttk.Frame(event_frame)
+        utterance_file_frame.grid(row=2, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+        utterance_file_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(event_frame, text="Expected contains").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        self.utterance_file_entry = ttk.Entry(utterance_file_frame, textvariable=self.utterance_file_var, state="readonly")
+        self.utterance_file_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(utterance_file_frame, text="Load", command=self._load_utterances_file).grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(utterance_file_frame, text="Clear", command=self._clear_utterances_file).grid(row=0, column=2, padx=(6, 0))
+
+        ttk.Label(event_frame, text="Loaded utterances").grid(row=3, column=0, sticky="nw", pady=(8, 0))
+        utt_list_frame = ttk.Frame(event_frame)
+        utt_list_frame.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+        utt_list_frame.columnconfigure(0, weight=1)
+        self.utterances_listbox = tk.Listbox(
+            utt_list_frame, height=5, selectmode=tk.EXTENDED, activestyle="dotbox",
+            exportselection=False,
+        )
+        self.utterances_listbox.grid(row=0, column=0, sticky="ew")
+        utt_list_scroll = ttk.Scrollbar(utt_list_frame, orient="vertical", command=self.utterances_listbox.yview)
+        utt_list_scroll.grid(row=0, column=1, sticky="ns")
+        self.utterances_listbox.configure(yscrollcommand=utt_list_scroll.set)
+        ttk.Label(utt_list_frame, text="(typed Utterance overrides file; otherwise select one or more, or none = run all)",
+                  font=("Segoe UI", 8)).grid(row=1, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(event_frame, text="Repeat").grid(row=4, column=0, sticky="w", pady=(8, 0))
+        self.repeat_var = tk.IntVar(value=1)
+        ttk.Spinbox(event_frame, from_=1, to=1000, textvariable=self.repeat_var, width=8).grid(row=4, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+
+        ttk.Label(event_frame, text="Expected contains").grid(row=5, column=0, sticky="w", pady=(8, 0))
         self.expected_var = tk.StringVar()
-        ttk.Entry(event_frame, textvariable=self.expected_var).grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+        ttk.Entry(event_frame, textvariable=self.expected_var).grid(row=5, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
 
         row += 1
 
@@ -128,7 +158,7 @@ class OFPTestHarnessApp:
         transport_frame.columnconfigure(1, weight=1)
 
         ttk.Label(transport_frame, text="Mode").grid(row=0, column=0, sticky="w")
-        self.transport_var = tk.StringVar(value="gateway")
+        self.transport_var = tk.StringVar(value="direct")
         mode_combo = ttk.Combobox(transport_frame, textvariable=self.transport_var, values=["gateway", "direct"], state="readonly")
         mode_combo.grid(row=0, column=1, sticky="ew", padx=(8, 0))
         mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._sync_transport_fields())
@@ -157,8 +187,16 @@ class OFPTestHarnessApp:
             command=self._toggle_all_known,
         ).grid(row=0, column=0, sticky="w")
 
+        agents_file_row = ttk.Frame(agent_frame)
+        agents_file_row.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        agents_file_row.columnconfigure(0, weight=1)
+        self.agents_file_entry = ttk.Entry(agents_file_row, textvariable=self.agents_file_var, state="readonly")
+        self.agents_file_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(agents_file_row, text="Load Agent File", command=self._load_agents_file).grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(agents_file_row, text="Reset", command=self._reset_agents_file).grid(row=0, column=2, padx=(6, 0))
+
         list_container = ttk.Frame(agent_frame)
-        list_container.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        list_container.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
         list_container.rowconfigure(0, weight=1)
         list_container.columnconfigure(0, weight=1)
 
@@ -176,9 +214,9 @@ class OFPTestHarnessApp:
         )
         self._bind_mousewheel_for_agent_area()
 
-        ttk.Label(agent_frame, text="Custom agent URLs (one per line)").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(agent_frame, text="Custom agent URLs (one per line)").grid(row=3, column=0, sticky="w", pady=(8, 0))
         self.custom_urls_text = tk.Text(agent_frame, height=4, wrap="word")
-        self.custom_urls_text.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        self.custom_urls_text.grid(row=4, column=0, sticky="ew", pady=(4, 0))
 
         row += 1
 
@@ -277,6 +315,11 @@ class OFPTestHarnessApp:
 
         self.detail_text = tk.Text(detail_frame, wrap="none")
         self.detail_text.grid(row=0, column=0, sticky="nsew")
+        detail_v_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.detail_text.yview)
+        detail_v_scroll.grid(row=0, column=1, sticky="ns")
+        detail_h_scroll = ttk.Scrollbar(detail_frame, orient="horizontal", command=self.detail_text.xview)
+        detail_h_scroll.grid(row=1, column=0, sticky="ew")
+        self.detail_text.configure(yscrollcommand=detail_v_scroll.set, xscrollcommand=detail_h_scroll.set)
 
         status_frame = ttk.Frame(parent)
         status_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -319,6 +362,157 @@ class OFPTestHarnessApp:
 
         self._refresh_filter_choices()
 
+    def _parse_utterances_file(self, path: Path) -> list[str]:
+        suffix = path.suffix.lower()
+        if suffix == ".json":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            source = payload.get("utterances") if isinstance(payload, dict) else payload
+            if not isinstance(source, list):
+                raise ValueError("JSON utterances file must be a list or an object with an 'utterances' list.")
+
+            utterances: list[str] = []
+            for item in source:
+                if isinstance(item, str) and item.strip():
+                    utterances.append(item.strip())
+                elif isinstance(item, dict):
+                    value = item.get("utterance") or item.get("text")
+                    if isinstance(value, str) and value.strip():
+                        utterances.append(value.strip())
+            return utterances
+
+        utterances: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            value = line.strip()
+            if not value or value.startswith("#"):
+                continue
+            utterances.append(value)
+        return utterances
+
+    def _load_utterances_file(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Load utterances file",
+            filetypes=[("JSON/Text", "*.json *.txt *.csv"), ("All Files", "*.*")],
+        )
+        if not path:
+            return
+
+        try:
+            utterances = self._parse_utterances_file(Path(path))
+        except Exception as exc:
+            messagebox.showerror("Utterances file", f"Failed to read file:\n{exc}")
+            return
+
+        if not utterances:
+            messagebox.showwarning("Utterances file", "No utterances were found in the selected file.")
+            return
+
+        self.loaded_utterances = utterances
+        self.utterance_file_var.set(path)
+        self._populate_utterances_listbox()
+        messagebox.showinfo("Utterances file", f"Loaded {len(utterances)} utterance(s).")
+
+    def _clear_utterances_file(self) -> None:
+        self.loaded_utterances = []
+        self.utterance_file_var.set("")
+        self._populate_utterances_listbox()
+
+    def _populate_utterances_listbox(self) -> None:
+        self.utterances_listbox.delete(0, tk.END)
+        for utt in self.loaded_utterances:
+            self.utterances_listbox.insert(tk.END, utt)
+
+    def _collect_utterances_for_run(self, event_type: str, single_utterance: str) -> list[str]:
+        """Return the list of utterances to dispatch for this run."""
+        single_utterance = (single_utterance or "").strip()
+        if event_type != "utterance":
+            return [single_utterance]
+        if single_utterance:
+            return [single_utterance]
+        if not self.loaded_utterances:
+            return [single_utterance]
+        selected_indices = self.utterances_listbox.curselection()
+        if selected_indices:
+            return [self.loaded_utterances[i] for i in selected_indices]
+        return list(self.loaded_utterances)
+
+    def _parse_agents_file(self, path: Path) -> list[dict[str, str]]:
+        suffix = path.suffix.lower()
+        agents: list[dict[str, str]] = []
+
+        if suffix == ".json":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            source = payload.get("agents") if isinstance(payload, dict) else payload
+            if not isinstance(source, list):
+                raise ValueError("JSON agent file must be a list or an object with an 'agents' list.")
+
+            for item in source:
+                if not isinstance(item, dict):
+                    continue
+                url = str(item.get("url") or "").strip()
+                name = str(item.get("conversationalName") or item.get("name") or "").strip()
+                if url:
+                    agents.append({"url": url, "conversationalName": name})
+            return agents
+
+        if suffix in {".csv", ".tsv"}:
+            delimiter = "\t" if suffix == ".tsv" else ","
+            with path.open("r", encoding="utf-8", newline="") as fh:
+                reader = csv.DictReader(fh, delimiter=delimiter)
+                for row in reader:
+                    if not isinstance(row, dict):
+                        continue
+                    url = str(row.get("url") or "").strip()
+                    name = str(row.get("conversationalName") or row.get("name") or "").strip()
+                    if url:
+                        agents.append({"url": url, "conversationalName": name})
+            return agents
+
+        for line in path.read_text(encoding="utf-8").splitlines():
+            value = line.strip()
+            if not value or value.startswith("#"):
+                continue
+            if "," in value:
+                name, url = value.split(",", 1)
+                url = url.strip()
+                name = name.strip()
+            else:
+                url = value
+                name = ""
+            if url:
+                agents.append({"url": url, "conversationalName": name})
+
+        return agents
+
+    def _load_agents_file(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Load agents file",
+            filetypes=[("JSON/CSV/Text", "*.json *.csv *.tsv *.txt"), ("All Files", "*.*")],
+        )
+        if not path:
+            return
+
+        try:
+            agents = self._parse_agents_file(Path(path))
+        except Exception as exc:
+            messagebox.showerror("Agents file", f"Failed to read file:\n{exc}")
+            return
+
+        if not agents:
+            messagebox.showwarning("Agents file", "No valid agents were found in the selected file.")
+            return
+
+        self.known_agents = agents
+        self.agents_file_var.set(path)
+        self.select_all_var.set(False)
+        self._populate_agents()
+        messagebox.showinfo("Agents file", f"Loaded {len(agents)} agent(s).")
+
+    def _reset_agents_file(self) -> None:
+        self.known_agents = load_known_agents()
+        self.agents_file_var.set("")
+        self.select_all_var.set(False)
+        self._populate_agents()
+
     def _bind_mousewheel_for_agent_area(self) -> None:
         self.agent_canvas.bind("<MouseWheel>", self._on_agent_mousewheel)
         self.agent_canvas.bind("<Button-4>", self._on_agent_mousewheel)
@@ -341,9 +535,7 @@ class OFPTestHarnessApp:
         return "break"
 
     def _sync_event_fields(self) -> None:
-        is_utterance = self.event_var.get() == "utterance"
-        state = "normal" if is_utterance else "disabled"
-        self.utterance_entry.configure(state=state)
+        self.utterance_entry.configure(state="normal")
 
     def _sync_transport_fields(self) -> None:
         is_gateway = self.transport_var.get() == "gateway"
@@ -708,8 +900,9 @@ class OFPTestHarnessApp:
             return
 
         if event_type == "utterance" and not utterance:
-            messagebox.showerror("Validation", "Utterance is required for event type utterance.")
-            return
+            if not self.loaded_utterances:
+                messagebox.showerror("Validation", "Provide an utterance or load an utterances file for event type utterance.")
+                return
 
         if transport == "gateway" and not gateway_url:
             messagebox.showerror("Validation", "Gateway URL is required in gateway mode.")
@@ -724,7 +917,8 @@ class OFPTestHarnessApp:
         if not self.append_results_var.get():
             self._clear_results()
 
-        total = len(targets) * repeat
+        utterances_to_send = self._collect_utterances_for_run(event_type, utterance)
+        total = len(targets) * repeat * max(1, len(utterances_to_send))
         self._set_running(True, total)
 
         self._worker = threading.Thread(
@@ -732,7 +926,7 @@ class OFPTestHarnessApp:
             kwargs={
                 "targets": targets,
                 "event_type": event_type,
-                "utterance": utterance,
+                "utterances": utterances_to_send,
                 "repeat": repeat,
                 "expected": expected,
                 "transport": transport,
@@ -750,90 +944,92 @@ class OFPTestHarnessApp:
         self,
         targets: list[tuple[str, str]],
         event_type: str,
-        utterance: str,
+        utterances: list[str],
         repeat: int,
         expected: str,
         transport: str,
         gateway_url: str,
         timeout_ms: int,
     ) -> None:
-        total = len(targets) * repeat
+        total = len(targets) * repeat * max(1, len(utterances))
         completed = 0
         success_count = 0
         fail_count = 0
         error_count = 0
 
         for agent_url, agent_name in targets:
-            for _ in range(repeat):
-                if self._cancel_requested:
-                    self.root.after(0, self._finish_run, success_count, fail_count, error_count, completed, total, True)
-                    return
+            for utterance in utterances:
+                for _ in range(repeat):
+                    if self._cancel_requested:
+                        self.root.after(0, self._finish_run, success_count, fail_count, error_count, completed, total, True)
+                        return
 
-                started = time.perf_counter()
-                payload = build_payload(
-                    event_type=event_type,
-                    target_url=agent_url,
-                    utterance=utterance,
-                    client_uri="openFloor://ofp-test-gui",
-                    client_url="gui://ofp-test-harness",
-                )
-
-                try:
-                    ok, status_code, error, response, _ = send_one(
+                    started = time.perf_counter()
+                    payload = build_payload(
+                        event_type=event_type,
                         target_url=agent_url,
-                        payload=payload,
-                        transport=transport,
-                        gateway_url=gateway_url,
-                        timeout_ms=timeout_ms,
+                        utterance=utterance,
+                        client_uri="openFloor://ofp-test-gui",
+                        client_url="gui://ofp-test-harness",
                     )
-                except Exception as exc:
-                    ok = False
-                    status_code = None
-                    error = str(exc)
-                    response = None
 
-                duration_ms = int((time.perf_counter() - started) * 1000)
-                response_text = json.dumps(response, ensure_ascii=False) if not isinstance(response, str) else response
-                expectation_failed = bool(expected) and (expected.lower() not in response_text.lower())
-                response_event_types = {event_type.lower() for event_type in _extract_event_types(response)}
+                    try:
+                        ok, status_code, error, response, _ = send_one(
+                            target_url=agent_url,
+                            payload=payload,
+                            transport=transport,
+                            gateway_url=gateway_url,
+                            timeout_ms=timeout_ms,
+                        )
+                    except Exception as exc:
+                        ok = False
+                        status_code = None
+                        error = str(exc)
+                        response = None
 
-                # OFP-specific success rule: getManifests is satisfied by publishManifest(s).
-                manifests_ack = (
-                    event_type == "getManifests"
-                    and (
-                        "publishmanifest" in response_event_types
-                        or "publishmanifests" in response_event_types
+                    duration_ms = int((time.perf_counter() - started) * 1000)
+                    response_text = json.dumps(response, ensure_ascii=False) if not isinstance(response, str) else response
+                    expectation_failed = bool(expected) and (expected.lower() not in response_text.lower())
+                    response_event_types = {event_type.lower() for event_type in _extract_event_types(response)}
+
+                    # OFP-specific success rule: getManifests is satisfied by publishManifest(s).
+                    manifests_ack = (
+                        event_type == "getManifests"
+                        and (
+                            "publishmanifest" in response_event_types
+                            or "publishmanifests" in response_event_types
+                        )
                     )
-                )
 
-                if not ok:
-                    result = "error"
-                    error_count += 1
-                elif manifests_ack:
-                    result = "success"
-                    success_count += 1
-                elif expectation_failed:
-                    result = "fail"
-                    fail_count += 1
-                else:
-                    result = "success"
-                    success_count += 1
+                    if not ok:
+                        result = "error"
+                        error_count += 1
+                    elif manifests_ack:
+                        result = "success"
+                        success_count += 1
+                    elif expectation_failed:
+                        result = "fail"
+                        fail_count += 1
+                    else:
+                        result = "success"
+                        success_count += 1
 
-                row = {
-                    "agent_url": agent_url,
-                    "agent_name": agent_name,
-                    "event_sent": event_type,
-                    "event_received": classify_received(response, is_error=(result == "error")),
-                    "result": result,
-                    "duration_ms": duration_ms,
-                    "status_code": status_code,
-                    "error": error,
-                    "response": response,
-                    "request_payload": payload,
-                }
+                    row = {
+                        "agent_url": agent_url,
+                        "agent_name": agent_name,
+                        "event_sent": event_type,
+                        "utterance_sent": utterance,
+                        "event_received": classify_received(response, is_error=(result == "error")),
+                        "result": result,
+                        "duration_ms": duration_ms,
+                        "status_code": status_code,
+                        "error": error,
+                        "response": response,
+                        "request_payload": payload,
+                    }
 
-                completed += 1
-                self.root.after(0, self._append_result_row, row, completed, total, success_count, fail_count, error_count)
+                    completed += 1
+                    self.root.after(0, self._append_result_row, row, completed, total, success_count, fail_count, error_count)
 
         self.root.after(0, self._finish_run, success_count, fail_count, error_count, completed, total, False)
 
@@ -866,6 +1062,7 @@ class OFPTestHarnessApp:
             "agent": row["agent_name"],
             "agent_url": row["agent_url"],
             "event_sent": row["event_sent"],
+            "utterance_sent": row.get("utterance_sent"),
             "event_received": row["event_received"],
             "result": row["result"],
             "duration_ms": row["duration_ms"],
