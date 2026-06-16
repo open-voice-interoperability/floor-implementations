@@ -2,7 +2,6 @@
   {"url": "https://openvoice-stella.vercel.app/", "conversationalName": "Stella (Vercel)"},
   {"url": "http://localhost:8767/", "conversationalName": "Stella (local 8767)"},
   {"url": "http://localhost:8768/verity/", "conversationalName": "Verity"},
-  {"url": "http://localhost:8769/", "conversationalName": "GeminiGeo"},
   {"url": "http://localhost:8081/", "conversationalName": "TimeAgent"},
   {"url": "https://openvoice-time-agent.vercel.app/", "conversationalName": "TimeAgent"},
   {"url": "http://localhost:8082/", "conversationalName": "Erin"},

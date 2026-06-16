@@ -33,11 +33,12 @@ All testing is configured and executed in the GUI.
 
 ## 3. Prepare Agent Targets
 
-You can test agents using either:
+You can test agents using:
 
-- Known agents (checkbox list)
+- Loaded agents from the agent file
 - Custom agent URLs (one per line)
-- Agent file (Load Agent File)
+
+The harness starts with an empty loaded-agent list. Use Load Agent File to populate it, or Reset to clear the loaded list again.
 
 For local Verity, use this endpoint:
 
@@ -73,7 +74,11 @@ When a file is loaded, each utterance is tested across selected agents (and repe
 
 ## 3b. Agent File Format
 
-The agent file should use the same format as `known_agents.json`: a JSON array of objects with `url` and `conversationalName` fields.
+The agent loader accepts these formats:
+
+- `.json`: a JSON array of objects, or a JSON object with an `agents` array
+- `.csv` / `.tsv`: a table with `url` and `conversationalName` or `name` columns
+- `.txt`: one URL per line, or `name,url` per line
 
 ```json
 [
@@ -92,16 +97,13 @@ In the Test Setup panel:
   - load an utterances file with the Load button.
 3. Set Repeat count.
 4. Optionally set Expected contains for response text checks.
-5. Choose Transport mode (default: direct):
-  - direct: posts directly to agent URL
-  - gateway: uses Flask proxy endpoint
-6. If using gateway, confirm Gateway URL (default usually http://localhost:8090/api/proxy-send).
-7. Set Timeout ms.
+5. Transport is direct only and posts directly to the agent URL.
+6. Set Timeout ms.
 
 ## 5. Select Agents
 
-- Use Send to all known agents if desired.
-- Or choose specific known agents.
+- Use Select all loaded agents if desired.
+- Or choose specific loaded agents.
 - Add any additional custom URLs in the textbox.
 
 ## 6. Run, Stop, Clear, Export
@@ -154,15 +156,7 @@ Open Summary Chart shows:
 
 ## 10. Transport Notes
 
-Gateway mode:
-
-- Uses Flask endpoint at api/flask_gateway.py
-- Useful for browser-safe routing and unified proxy behavior
-
-Direct mode:
-
-- Sends directly to each target URL
-- Useful for local network testing without proxy
+The harness now sends directly to each target URL.
 
 ## 11. Common Troubleshooting
 
@@ -193,5 +187,5 @@ GUI is the primary path. Legacy CLI passthrough remains available for automation
 
 ```bash
 python ofp_test.py cli list-agents
-python ofp_test.py cli run --event getManifests --all-known --transport gateway
+python ofp_test.py cli run --event getManifests --all-known
 ```

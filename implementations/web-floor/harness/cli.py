@@ -12,7 +12,6 @@ from urllib.request import Request, urlopen
 
 
 KNOWN_AGENTS_PATH = Path(__file__).with_name("known_agents.json")
-DEFAULT_GATEWAY_URL = "http://localhost:8090/api/proxy-send"
 EVENT_CHOICES = ("getManifests", "invite", "utterance")
 
 
@@ -173,41 +172,11 @@ def http_post_json(url: str, body: dict[str, Any], timeout_ms: int) -> tuple[int
     return status, reason, parsed, raw_text
 
 
-def send_one(target_url: str, payload: dict[str, Any], transport: str, gateway_url: str, timeout_ms: int) -> tuple[bool, int | None, str | None, Any, str | None]:
-    if transport == "gateway":
-        status, reason, parsed, _raw_text = http_post_json(
-            gateway_url,
-            {
-                "targetUrl": target_url,
-                "payload": payload,
-                "timeoutMs": timeout_ms,
-            },
-            timeout_ms,
-        )
-        if not isinstance(parsed, dict):
-            return False, status, f"Gateway returned non-object response ({status} {reason})", parsed, None
-
-        if not parsed.get("ok", False):
-            detail = parsed.get("error") or parsed.get("statusText") or "gateway error"
-            return False, int(parsed.get("status", status) or 0), f"{detail}", parsed.get("json") or parsed, None
-
-        agent_json = parsed.get("json")
-        if agent_json is None:
-            text = parsed.get("text")
-            if isinstance(text, str):
-                try:
-                    agent_json = json.loads(text)
-                except json.JSONDecodeError:
-                    agent_json = text
-        return True, int(parsed.get("status", status) or status), None, agent_json, None
-
-    if transport == "direct":
-        status, reason, parsed, raw_text = http_post_json(target_url, payload, timeout_ms)
-        if not (200 <= status < 300):
-            return False, status, f"HTTP {status} {reason}".strip(), parsed or raw_text, None
-        return True, status, None, parsed if parsed is not None else raw_text, None
-
-    raise ValueError(f"Unknown transport: {transport}")
+def send_one(target_url: str, payload: dict[str, Any], timeout_ms: int) -> tuple[bool, int | None, str | None, Any, str | None]:
+    status, reason, parsed, raw_text = http_post_json(target_url, payload, timeout_ms)
+    if not (200 <= status < 300):
+        return False, status, f"HTTP {status} {reason}".strip(), parsed or raw_text, None
+    return True, status, None, parsed if parsed is not None else raw_text, None
 
 
 def classify_received(response: Any, is_error: bool) -> str:
@@ -253,8 +222,6 @@ def run_harness(args: argparse.Namespace) -> int:
         raise ValueError("--repeat must be >= 1")
 
     expected_contains = str(scenario.get("expected_contains") or args.expected_contains or "")
-    transport = str(scenario.get("transport") or args.transport)
-    gateway_url = str(scenario.get("gateway_url") or args.gateway_url)
     timeout_ms = int(scenario.get("timeout_ms") or args.timeout_ms)
     client_uri = str(scenario.get("client_uri") or args.client_uri)
     client_url = str(scenario.get("client_url") or args.client_url)
@@ -266,7 +233,7 @@ def run_harness(args: argparse.Namespace) -> int:
     total = len(targets) * repeat
     completed = 0
 
-    print(f"Running {total} dispatches: event={event_type}, transport={transport}")
+    print(f"Running {total} dispatches: event={event_type}, transport=direct")
 
     for agent_url, agent_name in targets:
         for _ in range(repeat):
@@ -276,8 +243,6 @@ def run_harness(args: argparse.Namespace) -> int:
                 ok, status_code, error, response, _ = send_one(
                     target_url=agent_url,
                     payload=payload,
-                    transport=transport,
-                    gateway_url=gateway_url,
                     timeout_ms=timeout_ms,
                 )
             except Exception as exc:
@@ -334,8 +299,7 @@ def run_harness(args: argparse.Namespace) -> int:
         artifact = {
             "run_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "event": event_type,
-            "transport": transport,
-            "gateway_url": gateway_url if transport == "gateway" else None,
+            "transport": "direct",
             "summary": {
                 "success": success_count,
                 "fail": fail_count,
@@ -411,8 +375,6 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--all-known", action="store_true", help="Include all known agents from harness/known_agents.json")
     run_parser.add_argument("--repeat", type=int, default=1, help="Repeat count per agent")
     run_parser.add_argument("--expected-contains", default="", help="Mark as fail if response does not contain this text")
-    run_parser.add_argument("--transport", choices=("gateway", "direct"), default="gateway", help="Transport mode")
-    run_parser.add_argument("--gateway-url", default=DEFAULT_GATEWAY_URL, help="Gateway endpoint for --transport gateway")
     run_parser.add_argument("--timeout-ms", type=int, default=10000, help="Timeout per request in milliseconds")
     run_parser.add_argument("--client-uri", default="openFloor://cli-test-harness", help="Sender speakerUri in envelope")
     run_parser.add_argument("--client-url", default="cli://test-harness", help="Sender serviceUrl in envelope")

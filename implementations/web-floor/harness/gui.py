@@ -9,14 +9,13 @@ import threading
 import time
 from pathlib import Path
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 from .cli import (
-    DEFAULT_GATEWAY_URL,
     EVENT_CHOICES,
     build_payload,
     classify_received,
-    load_known_agents,
     send_one,
 )
 
@@ -48,10 +47,10 @@ class OFPTestHarnessApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("OFP Test Harness")
-        self.root.geometry("1440x980")
-        self.root.minsize(1280, 900)
+        self.root.geometry("1440x1120")
+        self.root.minsize(1280, 1020)
 
-        self.known_agents = load_known_agents()
+        self.known_agents = []
         self.results: list[dict] = []
         self._selected_response_by_row: dict[str, dict] = {}
 
@@ -66,15 +65,127 @@ class OFPTestHarnessApp:
         self.agents_file_var = tk.StringVar(value="")
         self.loaded_utterances: list[str] = []
 
+        self.zoom_var = tk.IntVar(value=100)
+        self._base_named_font_sizes: dict[str, int] = {}
+        self._header_font = tkfont.Font(family="Segoe UI", size=16, weight="bold")
+        self._helper_font = tkfont.Font(family="Segoe UI", size=8)
+
+        self._capture_base_named_fonts()
+        self._build_menu()
+
         self._build_ui()
         self._populate_agents()
+
+    def _capture_base_named_fonts(self) -> None:
+        for font_name in (
+            "TkDefaultFont",
+            "TkTextFont",
+            "TkMenuFont",
+            "TkHeadingFont",
+            "TkCaptionFont",
+            "TkFixedFont",
+            "TkIconFont",
+            "TkTooltipFont",
+        ):
+            try:
+                base_font = tkfont.nametofont(font_name)
+                base_size = int(base_font.cget("size"))
+                if base_size < 0:
+                    base_size = abs(base_size)
+                self._base_named_font_sizes[font_name] = max(1, base_size)
+            except tk.TclError:
+                continue
+
+    def _build_menu(self) -> None:
+        menubar = tk.Menu(self.root)
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_radiobutton(label="Zoom 100%", variable=self.zoom_var, value=100, command=lambda: self._apply_zoom(100))
+        view_menu.add_radiobutton(label="Zoom 150%", variable=self.zoom_var, value=150, command=lambda: self._apply_zoom(150))
+        view_menu.add_radiobutton(label="Zoom 200%", variable=self.zoom_var, value=200, command=lambda: self._apply_zoom(200))
+        menubar.add_cascade(label="View", menu=view_menu)
+        self.root.config(menu=menubar)
+
+    def _apply_zoom(self, zoom_percent: int) -> None:
+        scale = max(1.0, zoom_percent / 100.0)
+
+        for font_name, base_size in self._base_named_font_sizes.items():
+            try:
+                target_font = tkfont.nametofont(font_name)
+                target_font.configure(size=max(1, int(round(base_size * scale))))
+            except tk.TclError:
+                continue
+
+        self._header_font.configure(size=max(1, int(round(16 * scale))))
+        self._helper_font.configure(size=max(1, int(round(8 * scale))))
+        self.root.after_idle(self._refresh_main_scrollregion)
+
+    def _refresh_main_scrollregion(self) -> None:
+        if hasattr(self, "main_canvas"):
+            bbox = self.main_canvas.bbox("all")
+            if bbox is not None:
+                self.main_canvas.configure(scrollregion=bbox)
+
+    def _on_main_content_configure(self, _event: tk.Event) -> None:
+        self._refresh_main_scrollregion()
+
+    def _on_main_canvas_configure(self, event: tk.Event) -> None:
+        if hasattr(self, "_main_window_id"):
+            self.main_canvas.itemconfigure(self._main_window_id, width=event.width)
+        self._refresh_main_scrollregion()
+
+    def _bind_main_mousewheel(self) -> None:
+        self.root.bind_all("<MouseWheel>", self._on_main_mousewheel, add="+")
+        self.root.bind_all("<Button-4>", self._on_main_mousewheel, add="+")
+        self.root.bind_all("<Button-5>", self._on_main_mousewheel, add="+")
+
+    def _widget_in_agent_area(self, widget: tk.Misc | None) -> bool:
+        while widget is not None:
+            if widget is getattr(self, "agent_canvas", None):
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def _on_main_mousewheel(self, event: tk.Event) -> str | None:
+        if self._widget_in_agent_area(getattr(event, "widget", None)):
+            return None
+
+        if hasattr(event, "delta") and event.delta:
+            steps = -1 * int(event.delta / 120)
+            if steps == 0:
+                steps = -1 if event.delta > 0 else 1
+            self.main_canvas.yview_scroll(steps, "units")
+            return "break"
+
+        if getattr(event, "num", None) == 4:
+            self.main_canvas.yview_scroll(-1, "units")
+            return "break"
+        if getattr(event, "num", None) == 5:
+            self.main_canvas.yview_scroll(1, "units")
+            return "break"
+        return None
 
     def _build_ui(self) -> None:
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=1)
 
-        outer = ttk.Frame(self.root, padding=10)
-        outer.grid(row=0, column=0, sticky="nsew")
+        shell = ttk.Frame(self.root)
+        shell.grid(row=0, column=0, sticky="nsew")
+        shell.rowconfigure(0, weight=1)
+        shell.columnconfigure(0, weight=1)
+
+        self.main_canvas = tk.Canvas(shell, highlightthickness=0)
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        main_v_scroll = ttk.Scrollbar(shell, orient="vertical", command=self.main_canvas.yview)
+        main_v_scroll.grid(row=0, column=1, sticky="ns")
+        main_h_scroll = ttk.Scrollbar(shell, orient="horizontal", command=self.main_canvas.xview)
+        main_h_scroll.grid(row=1, column=0, sticky="ew")
+        self.main_canvas.configure(yscrollcommand=main_v_scroll.set, xscrollcommand=main_h_scroll.set)
+
+        outer = ttk.Frame(self.main_canvas, padding=10)
+        self._main_window_id = self.main_canvas.create_window((0, 0), window=outer, anchor="nw")
+        outer.bind("<Configure>", self._on_main_content_configure)
+        self.main_canvas.bind("<Configure>", self._on_main_canvas_configure)
+
         outer.rowconfigure(0, weight=0)
         outer.rowconfigure(1, weight=1)
         outer.columnconfigure(0, weight=2)
@@ -84,11 +195,11 @@ class OFPTestHarnessApp:
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         header.columnconfigure(1, weight=1)
 
-        ttk.Label(header, text="Open Floor Test Harness", font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="Open Floor Test Harness", font=self._header_font).grid(row=0, column=0, sticky="w")
 
         left = ttk.LabelFrame(outer, text="Test Setup", padding=10)
         left.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
-        left.rowconfigure(3, weight=1)
+        left.rowconfigure(2, weight=1)
         left.columnconfigure(0, weight=1)
 
         right = ttk.Frame(outer)
@@ -99,6 +210,7 @@ class OFPTestHarnessApp:
 
         self._build_setup_panel(left)
         self._build_results_panel(right)
+        self._bind_main_mousewheel()
 
     def _build_setup_panel(self, parent: ttk.Frame) -> None:
         row = 0
@@ -141,7 +253,7 @@ class OFPTestHarnessApp:
         utt_list_scroll.grid(row=0, column=1, sticky="ns")
         self.utterances_listbox.configure(yscrollcommand=utt_list_scroll.set)
         ttk.Label(utt_list_frame, text="(typed Utterance overrides file; otherwise select one or more, or none = run all)",
-                  font=("Segoe UI", 8)).grid(row=1, column=0, columnspan=2, sticky="w")
+              font=self._helper_font).grid(row=1, column=0, columnspan=2, sticky="w")
 
         ttk.Label(event_frame, text="Repeat").grid(row=4, column=0, sticky="w", pady=(8, 0))
         self.repeat_var = tk.IntVar(value=1)
@@ -151,26 +263,37 @@ class OFPTestHarnessApp:
         self.expected_var = tk.StringVar()
         ttk.Entry(event_frame, textvariable=self.expected_var).grid(row=5, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
 
-        row += 1
-
-        transport_frame = ttk.LabelFrame(parent, text="Transport", padding=8)
-        transport_frame.grid(row=row, column=0, sticky="ew", pady=(8, 0))
-        transport_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(transport_frame, text="Mode").grid(row=0, column=0, sticky="w")
-        self.transport_var = tk.StringVar(value="direct")
-        mode_combo = ttk.Combobox(transport_frame, textvariable=self.transport_var, values=["gateway", "direct"], state="readonly")
-        mode_combo.grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._sync_transport_fields())
-
-        ttk.Label(transport_frame, text="Gateway URL").grid(row=1, column=0, sticky="w", pady=(8, 0))
-        self.gateway_var = tk.StringVar(value=DEFAULT_GATEWAY_URL)
-        self.gateway_entry = ttk.Entry(transport_frame, textvariable=self.gateway_var)
-        self.gateway_entry.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
-
-        ttk.Label(transport_frame, text="Timeout ms").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(event_frame, text="Timeout ms").grid(row=6, column=0, sticky="w", pady=(8, 0))
         self.timeout_var = tk.IntVar(value=10000)
-        ttk.Spinbox(transport_frame, from_=100, to=120000, increment=100, textvariable=self.timeout_var, width=12).grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+        ttk.Spinbox(event_frame, from_=100, to=120000, increment=100, textvariable=self.timeout_var, width=12).grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+
+        action_frame = ttk.Frame(parent)
+        action_frame.grid(row=row, column=0, sticky="ew", pady=(10, 0))
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
+
+        self.append_results_var = tk.BooleanVar(value=True)
+        self.append_checkbox = ttk.Checkbutton(
+            action_frame,
+            text="Append to existing results",
+            variable=self.append_results_var,
+        )
+        self.append_checkbox.grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self.run_btn = ttk.Button(action_frame, text="Run", command=self._start_run)
+        self.run_btn.grid(row=1, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
+
+        self.stop_btn = ttk.Button(action_frame, text="Stop", command=self._stop_run, state="disabled")
+        self.stop_btn.grid(row=1, column=1, sticky="ew", pady=(6, 0), padx=(4, 0))
+
+        self.clear_btn = ttk.Button(action_frame, text="Clear Results", command=self._clear_results)
+        self.clear_btn.grid(row=2, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
+
+        self.export_btn = ttk.Button(action_frame, text="Export Results JSON", command=self._export_results)
+        self.export_btn.grid(row=2, column=1, sticky="ew", pady=(6, 0), padx=(4, 0))
+
+        self.chart_btn = ttk.Button(action_frame, text="Open Summary Chart", command=self._open_summary_chart)
+        self.chart_btn.grid(row=3, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
 
         row += 1
 
@@ -182,7 +305,7 @@ class OFPTestHarnessApp:
         self.select_all_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             agent_frame,
-            text="Send to all known agents",
+            text="Select all loaded agents",
             variable=self.select_all_var,
             command=self._toggle_all_known,
         ).grid(row=0, column=0, sticky="w")
@@ -218,38 +341,7 @@ class OFPTestHarnessApp:
         self.custom_urls_text = tk.Text(agent_frame, height=4, wrap="word")
         self.custom_urls_text.grid(row=4, column=0, sticky="ew", pady=(4, 0))
 
-        row += 1
-
-        action_frame = ttk.Frame(parent)
-        action_frame.grid(row=row, column=0, sticky="ew", pady=(10, 0))
-        action_frame.columnconfigure(0, weight=1)
-        action_frame.columnconfigure(1, weight=1)
-
-        self.append_results_var = tk.BooleanVar(value=True)
-        self.append_checkbox = ttk.Checkbutton(
-            action_frame,
-            text="Append to existing results",
-            variable=self.append_results_var,
-        )
-        self.append_checkbox.grid(row=0, column=0, columnspan=2, sticky="w")
-
-        self.run_btn = ttk.Button(action_frame, text="Run", command=self._start_run)
-        self.run_btn.grid(row=1, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
-
-        self.stop_btn = ttk.Button(action_frame, text="Stop", command=self._stop_run, state="disabled")
-        self.stop_btn.grid(row=1, column=1, sticky="ew", pady=(6, 0), padx=(4, 0))
-
-        self.clear_btn = ttk.Button(action_frame, text="Clear Results", command=self._clear_results)
-        self.clear_btn.grid(row=2, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
-
-        self.export_btn = ttk.Button(action_frame, text="Export Results JSON", command=self._export_results)
-        self.export_btn.grid(row=2, column=1, sticky="ew", pady=(6, 0), padx=(4, 0))
-
-        self.chart_btn = ttk.Button(action_frame, text="Open Summary Chart", command=self._open_summary_chart)
-        self.chart_btn.grid(row=3, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
-
         self._sync_event_fields()
-        self._sync_transport_fields()
 
     def _build_results_panel(self, parent: ttk.Frame) -> None:
         summary_frame = ttk.LabelFrame(parent, text="Results Summary", padding=8)
@@ -347,7 +439,7 @@ class OFPTestHarnessApp:
                 continue
             label = f"{name} -> {url}" if name else url
 
-            var = tk.BooleanVar(value=False)
+            var = tk.BooleanVar(value=self.select_all_var.get())
             checkbox = ttk.Checkbutton(
                 self.agent_checks_frame,
                 text=label,
@@ -491,24 +583,30 @@ class OFPTestHarnessApp:
         if not path:
             return
 
+        self._load_agents_file_path(Path(path))
+
+    def _load_agents_file_path(self, path: Path, show_messages: bool = True) -> None:
         try:
-            agents = self._parse_agents_file(Path(path))
+            agents = self._parse_agents_file(path)
         except Exception as exc:
-            messagebox.showerror("Agents file", f"Failed to read file:\n{exc}")
+            if show_messages:
+                messagebox.showerror("Agents file", f"Failed to read file:\n{exc}")
             return
 
         if not agents:
-            messagebox.showwarning("Agents file", "No valid agents were found in the selected file.")
+            if show_messages:
+                messagebox.showwarning("Agents file", "No valid agents were found in the selected file.")
             return
 
         self.known_agents = agents
-        self.agents_file_var.set(path)
-        self.select_all_var.set(False)
+        self.agents_file_var.set(str(path))
+        self.select_all_var.set(True)
         self._populate_agents()
-        messagebox.showinfo("Agents file", f"Loaded {len(agents)} agent(s).")
+        if show_messages:
+            messagebox.showinfo("Agents file", f"Loaded {len(agents)} agent(s).")
 
     def _reset_agents_file(self) -> None:
-        self.known_agents = load_known_agents()
+        self.known_agents = []
         self.agents_file_var.set("")
         self.select_all_var.set(False)
         self._populate_agents()
@@ -538,8 +636,7 @@ class OFPTestHarnessApp:
         self.utterance_entry.configure(state="normal")
 
     def _sync_transport_fields(self) -> None:
-        is_gateway = self.transport_var.get() == "gateway"
-        self.gateway_entry.configure(state=("normal" if is_gateway else "disabled"))
+        return
 
     def _toggle_all_known(self) -> None:
         checked = self.select_all_var.get()
@@ -891,8 +988,6 @@ class OFPTestHarnessApp:
         utterance = self.utterance_var.get().strip()
         repeat = max(1, int(self.repeat_var.get() or 1))
         expected = self.expected_var.get().strip()
-        transport = self.transport_var.get().strip()
-        gateway_url = self.gateway_var.get().strip()
         timeout_ms = max(100, int(self.timeout_var.get() or 10000))
 
         if event_type not in EVENT_CHOICES:
@@ -904,13 +999,13 @@ class OFPTestHarnessApp:
                 messagebox.showerror("Validation", "Provide an utterance or load an utterances file for event type utterance.")
                 return
 
-        if transport == "gateway" and not gateway_url:
-            messagebox.showerror("Validation", "Gateway URL is required in gateway mode.")
+        if not self.known_agents:
+            messagebox.showerror("Validation", "Load an agents file before running the harness.")
             return
 
         targets = self._collect_targets()
         if not targets:
-            messagebox.showerror("Validation", "Select at least one agent or add a custom URL.")
+            messagebox.showerror("Validation", "Select at least one agent from the loaded file or enter a custom URL.")
             return
 
         self._cancel_requested = False
@@ -929,8 +1024,6 @@ class OFPTestHarnessApp:
                 "utterances": utterances_to_send,
                 "repeat": repeat,
                 "expected": expected,
-                "transport": transport,
-                "gateway_url": gateway_url,
                 "timeout_ms": timeout_ms,
             },
             daemon=True,
@@ -947,8 +1040,6 @@ class OFPTestHarnessApp:
         utterances: list[str],
         repeat: int,
         expected: str,
-        transport: str,
-        gateway_url: str,
         timeout_ms: int,
     ) -> None:
         total = len(targets) * repeat * max(1, len(utterances))
@@ -977,8 +1068,6 @@ class OFPTestHarnessApp:
                         ok, status_code, error, response, _ = send_one(
                             target_url=agent_url,
                             payload=payload,
-                            transport=transport,
-                            gateway_url=gateway_url,
                             timeout_ms=timeout_ms,
                         )
                     except Exception as exc:

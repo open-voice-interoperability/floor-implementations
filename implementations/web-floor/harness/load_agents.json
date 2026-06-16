@@ -1,0 +1,11 @@
+[
+  {"url": "http://192.168.4.51:8767/", "conversationalName": "Stella (LAN)"},
+  {"url": "http://192.168.4.51:8769/", "conversationalName": "Gemini Agent (LAN)"},
+  {"url": "http://192.168.4.51:8768/verity/", "conversationalName": "Verity (LAN)"},
+  {"url": "http://192.168.4.51:8081/", "conversationalName": "TimeAgent (LAN)"},
+  {"url": "http://192.168.4.51:8082/", "conversationalName": "Erin (LAN)"},
+  {"url": "http://192.168.4.51:8083/", "conversationalName": "Financial (LAN)"},
+  {"url": "http://192.168.4.51:8084/", "conversationalName": "Prudence (LAN)"},
+  {"url": "http://192.168.4.51:8085/", "conversationalName": "Lucky (LAN)"},
+  {"url": "http://192.168.4.51:8086/", "conversationalName": "Convener (LAN)"}
+]
