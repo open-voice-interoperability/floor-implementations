@@ -76,11 +76,14 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Conversation History</h2>
-          <button id="clearConversationBtn" type="button">Clear Conversation</button>
-          <button id="copyConversationBtn" type="button">Copy to Clipboard</button>
+          <div class="panel-actions">
+            <button id="clearConversationBtn" type="button">Clear Conversation</button>
+            <button id="copyConversationBtn" type="button">Copy to Clipboard</button>
+            <button id="showConversationMarkdownBtn" type="button">Open Markdown View</button>
+          </div>
         </div>
+        <div id="htmlPopupArea" class="history-actions"></div>
         <div class="conversation-container">
-          <div id="htmlPopupArea"></div>
           <pre id="conversation"></pre>
           <div class="resize-handle"></div>
         </div>
@@ -96,6 +99,29 @@
             Send to all invited agents
           </label>
           <button id="sendUtteranceBtn" disabled>Send Utterance</button>
+        </div>
+
+        <div class="row options" role="radiogroup" aria-label="Response Pattern">
+          <label class="inline">
+            <input type="radio" name="responsePattern" id="responsePatternDefault" value="default" />
+            Normal routing
+          </label>
+          <label class="inline">
+            <input type="radio" name="responsePattern" id="responsePatternRoundRobin" value="round_robin" checked />
+            Round robin via convener
+          </label>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <label for="maxWordsSlider" style="font-size:0.9rem">Max words per agent response</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.75rem;color:#777;min-width:1.8em;text-align:right">75</span>
+            <div style="flex:1;position:relative;padding-top:22px">
+              <span id="maxWordsValue" style="position:absolute;top:0;font-size:0.8rem;font-weight:600;background:#2563eb;color:#fff;padding:1px 6px;border-radius:4px;transform:translateX(-50%);pointer-events:none">125</span>
+              <input type="range" id="maxWordsSlider" min="75" max="200" step="25" value="125" style="width:100%;display:block;margin:0" />
+            </div>
+            <span style="font-size:0.75rem;color:#777;min-width:2em">200</span>
+          </div>
         </div>
       </section>
     </div>
@@ -122,6 +148,7 @@
         <section class="panel">
           <div class="panel-header">
             <h2>Event Log</h2>
+            <button id="copyEventLogBtn" type="button">Copy to Clipboard</button>
             <button id="clearEventLogBtn" type="button">Clear Event Log</button>
           </div>
           <div class="resizable-log-container">
@@ -133,6 +160,7 @@
         <section class="panel">
           <div class="panel-header">
             <h2>Error Log</h2>
+            <button id="copyErrorLogBtn" type="button">Copy to Clipboard</button>
             <button id="clearErrorLogBtn" type="button">Clear Error Log</button>
           </div>
           <pre id="errorLog"></pre>
@@ -141,6 +169,6 @@
     </div>
   </main>
 
-  <script type="module" src="/app.js?v=5"></script>
+  <script type="module" src="/app.js?v=17"></script>
 </body>
 </html>

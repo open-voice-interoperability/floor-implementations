@@ -353,13 +353,6 @@ button:disabled {
   width: 100%;
 }
 
-.conversation-container #htmlPopupArea {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px 0 6px;
-}
-
 .conversation-container #conversation {
   min-height: 0;
   max-height: none;

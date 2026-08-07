@@ -3,6 +3,35 @@
 // the user time to read the previous message. Set to 0 to disable delay.
 const MESSAGE_DISPLAY_DELAY_MS_PER_WORD = 150;
 
+// Upper bound for freeing a popup's blob URL if we never observe it closing.
+const POPUP_URL_REVOKE_MAX_MS = 60000;
+// How often to check whether a popup window has been closed by the user.
+const POPUP_CLOSE_POLL_MS = 1000;
+
+// Proxy-send timeouts: control events (invite, getManifests, grantFloor, etc.)
+// resolve quickly; utterance events can trigger a long convener fan-out.
+const CONTROL_EVENT_TIMEOUT_MS = 10000;
+const UTTERANCE_TIMEOUT_MS = 180000;
+
+// Revoke a popup's object URL as soon as the popup closes (freeing memory
+// promptly), with a hard fallback cap so the URL is never leaked indefinitely.
+function scheduleBlobUrlCleanup(popup, htmlUrl) {
+  const revoke = () => {
+    try { URL.revokeObjectURL(htmlUrl); } catch (_) { /* no-op */ }
+  };
+  if (!popup) {
+    setTimeout(revoke, POPUP_URL_REVOKE_MAX_MS);
+    return;
+  }
+  const startedAt = Date.now();
+  const poll = setInterval(() => {
+    if (popup.closed || Date.now() - startedAt >= POPUP_URL_REVOKE_MAX_MS) {
+      clearInterval(poll);
+      revoke();
+    }
+  }, POPUP_CLOSE_POLL_MS);
+}
+
 // Internal message queue and timing tracking for display delays
 const messageQueue = {
   queue: [],
@@ -13,17 +42,27 @@ const messageQueue = {
 
 const KNOWN_AGENTS = [
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella (Vercel)" },
-  { url: "http://localhost:8767/", conversationalName: "Stella (local 8767)" },
-  { url: "http://localhost:8768/verity/", conversationalName: "Verity" },
-  { url: "http://localhost:8769/", conversationalName: "GeminiGeo" },
-  { url: "http://localhost:8081/", conversationalName: "TimeAgent" },
+  { url: "http://127.0.0.1:8767/", conversationalName: "Stella (local 8767)" },
+  { url: "http://127.0.0.1:8768/verity/", conversationalName: "Verity" },
+  { url: "http://127.0.0.1:8769/", conversationalName: "GeminiGeo" },
+  { url: "http://127.0.0.1:8081/", conversationalName: "TimeAgent" },
   { url: "https://openvoice-time-agent.vercel.app/", conversationalName: "TimeAgent" },
-  { url: "http://localhost:8082/", conversationalName: "Erin" },
-  { url: "http://localhost:8086/", conversationalName: "Convener" },
+  { url: "http://127.0.0.1:8082/", conversationalName: "Erin" },
+  { url: "http://127.0.0.1:8086/", conversationalName: "Convener" },
   { url: "https://secondAssistant.pythonanywhere.com/verity/", conversationalName: "Verity 2" },
-  { url: "http://localhost:8083/", conversationalName: "Finn" },
-  { url: "http://localhost:8084/", conversationalName: "Prudence" },
-  { url: "http://localhost:8085/", conversationalName: "Lucky" },
+  { url: "http://127.0.0.1:8083/", conversationalName: "Finn" },
+  { url: "http://127.0.0.1:8084/", conversationalName: "Prudence" },
+  { url: "http://127.0.0.1:8085/", conversationalName: "Lucky" },
+  { url: "http://127.0.0.1:8199/", conversationalName: "Convener (Strategy)" },
+  { url: "http://127.0.0.1:8200/", conversationalName: "Market Validator" },
+  { url: "http://127.0.0.1:8201/", conversationalName: "Competitive Intelligence" },
+  { url: "http://127.0.0.1:8202/", conversationalName: "Business Model Designer" },
+  { url: "http://127.0.0.1:8203/", conversationalName: "Risk Identifier" },
+  { url: "http://127.0.0.1:8204/", conversationalName: "Funding Strategist" },
+  { url: "http://127.0.0.1:8205/", conversationalName: "Workforce Strategist" },
+  { url: "http://127.0.0.1:8208/", conversationalName: "Technical Feasibility" },
+  { url: "http://127.0.0.1:8206/", conversationalName: "Devil's Advocate" },
+  { url: "http://127.0.0.1:8207/", conversationalName: "Strategy Synthesizer" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
 ];
@@ -71,8 +110,9 @@ const gatewayGlobal = typeof window !== "undefined" ? window.WEB_FLOOR_GATEWAY_B
 const GATEWAY_BASE_URL = normalizeGatewayBaseUrl(gatewayQueryParam || gatewayGlobal || "");
 
 function gatewayPath(pathname) {
-  if (!GATEWAY_BASE_URL) return pathname;
-  return `${GATEWAY_BASE_URL}${pathname}`;
+  if (GATEWAY_BASE_URL) return `${GATEWAY_BASE_URL}${pathname}`;
+  if (isLocalClientContext()) return `http://localhost:8090${pathname}`;
+  return pathname;
 }
 
 function isLocalClientContext() {
@@ -129,6 +169,10 @@ const ui = {
   knownAgentList: document.querySelector("#knownAgentList"),
   utteranceInput: document.querySelector("#utteranceInput"),
   sendToAll: document.querySelector("#sendToAll"),
+  responsePatternDefault: document.querySelector("#responsePatternDefault"),
+  responsePatternRoundRobin: document.querySelector("#responsePatternRoundRobin"),
+  maxWordsSlider: document.querySelector("#maxWordsSlider"),
+  maxWordsValue: document.querySelector("#maxWordsValue"),
   showIncoming: document.querySelector("#showIncoming"),
   showOutgoing: document.querySelector("#showOutgoing"),
   getManifestsBtn: document.querySelector("#getManifestsBtn"),
@@ -136,6 +180,9 @@ const ui = {
   sendUtteranceBtn: document.querySelector("#sendUtteranceBtn"),
   clearConversationBtn: document.querySelector("#clearConversationBtn"),
   copyConversationBtn: document.querySelector("#copyConversationBtn"),
+  showConversationMarkdownBtn: document.querySelector("#showConversationMarkdownBtn"),
+  copyEventLogBtn: document.querySelector("#copyEventLogBtn"),
+  copyErrorLogBtn: document.querySelector("#copyErrorLogBtn"),
   clearEventLogBtn: document.querySelector("#clearEventLogBtn"),
   clearErrorLogBtn: document.querySelector("#clearErrorLogBtn"),
   toggleDiagnosticsBtn: document.querySelector("#toggleDiagnosticsBtn"),
@@ -202,6 +249,28 @@ function knownNameForUrl(targetUrl) {
   for (const item of state.knownAgents) {
     if (item.conversationalName && normalizeAgentId(item.url) === normalized) return item.conversationalName;
   }
+
+  // If hostnames differ only by loopback/local-network rewrite (localhost vs LAN IP),
+  // still resolve by matching local endpoint shape (scheme + port + path).
+  try {
+    const targetParsed = new URL(cleanUrlCandidate(targetUrl));
+    for (const item of state.knownAgents) {
+      if (!item.conversationalName) continue;
+      const knownParsed = new URL(cleanUrlCandidate(item.url));
+      const sameEndpoint =
+        knownParsed.protocol === targetParsed.protocol &&
+        (knownParsed.port || "") === (targetParsed.port || "") &&
+        knownParsed.pathname.replace(/\/+$/, "") === targetParsed.pathname.replace(/\/+$/, "");
+      if (!sameEndpoint) continue;
+
+      const targetHostIsLocal = LOOPBACK_HOSTNAMES.has((targetParsed.hostname || "").toLowerCase()) || isLocalClientContext();
+      const knownHostIsLocal = LOOPBACK_HOSTNAMES.has((knownParsed.hostname || "").toLowerCase()) || isLocalClientContext();
+      if (targetHostIsLocal && knownHostIsLocal) return item.conversationalName;
+    }
+  } catch (_error) {
+    // Ignore parse errors and fall through to no-name result.
+  }
+
   return "";
 }
 
@@ -293,89 +362,23 @@ function resolveHistorySpeakerName(speaker, speakerUri = "") {
   return "Unknown";
 }
 
-function isNamePrefixMatch(text, candidateName) {
-  if (!text || !candidateName) return false;
-  const trimmed = text.trimStart();
-  const pattern = new RegExp(`^${escapeRegExp(candidateName)}(?:\\b|[\\s,:;.!?\\-])`, "i");
-  return pattern.test(trimmed);
+function isRevokedSpeaker(targetUrl, speakerUri = "") {
+  const targetId = normalizeAgentId(targetUrl);
+  if (targetId && state.revokedAgents.has(targetId)) return true;
+
+  const speakerUrl = urlFromSpeakerUri(speakerUri);
+  const speakerId = normalizeAgentId(speakerUrl || speakerUri);
+  if (speakerId && state.revokedAgents.has(speakerId)) return true;
+
+  return false;
 }
 
-function stripLeadingAddressName(text, name) {
-  if (!text || !name) return text;
-  const pattern = new RegExp(`^\\s*${escapeRegExp(name)}(?:\\b|[\\s,:;.!?\\-])+`, "i");
-  return text.replace(pattern, "").trimStart();
-}
-
-function parseUtteranceForAddressedAgent(text, addressedAgent) {
-  if (!text) return text;
-  const addressedName = (addressedAgent?.name || "").trim().toLowerCase();
-  if (addressedName === "stella") {
-    return stripLeadingAddressName(text, "stella");
-  }
-  return text;
-}
-
-function findAddressedConversantByPrefix(text) {
-  const matches = [];
-  for (const conversant of state.globalConversation.conversants) {
-    const identification = conversant.identification || {};
-    let conversationalName = (identification.conversationalName || "").trim();
-    const speakerUri = identification.speakerUri || "";
-    const serviceUrl = identification.serviceUrl || "";
-
-    if (isUrlLike(conversationalName)) {
-      conversationalName = resolveDisplayNameForTarget(serviceUrl || urlFromSpeakerUri(speakerUri), speakerUri);
-    }
-
-    if (!conversationalName || !speakerUri || isUrlLike(conversationalName)) continue;
-    if (isNamePrefixMatch(text, conversationalName)) {
-      matches.push({
-        score: conversationalName.length,
-        url: serviceUrl,
-        name: conversationalName,
-        speaker_uri: speakerUri
-      });
-    }
-  }
-
-  if (!matches.length) return null;
-  matches.sort((a, b) => b.score - a.score);
-  return matches[0];
-}
-
-function findAddressedAgentInUtterance(text) {
-  if (!text) return null;
-
-  const conversantMatch = findAddressedConversantByPrefix(text);
-  if (conversantMatch) return conversantMatch;
-
-  const matches = [];
-  for (const agent of state.invitedAgents) {
-    const targetUrl = agent.url;
-    let name = (agent.conversationalName || "").trim();
-    if (!name) name = resolveConversationalName(`agent:${targetUrl}`, targetUrl);
-    if (!name) name = knownNameForUrl(targetUrl);
-    if (!name) continue;
-
-    if (isNamePrefixMatch(text, name)) {
-      matches.push({ score: name.length, url: targetUrl, name, speaker_uri: resolveSpeakerUriForAgentUrl(targetUrl) });
-    }
-  }
-
-  if (!matches.length) return null;
-  matches.sort((a, b) => b.score - a.score);
-  return matches[0];
-}
-
-function resolveSpeakerUriForAgentUrl(agentUrl) {
-  for (const conversant of state.globalConversation.conversants) {
-    const identification = conversant.identification || {};
-    if (normalizeAgentId(identification.serviceUrl) === normalizeAgentId(agentUrl) && identification.speakerUri) {
-      return identification.speakerUri;
-    }
-  }
-  return `agent:${agentUrl}`;
-}
+// Client-side addressed-agent detection (findAddressedAgentInUtterance and
+// friends) was removed here: convener's own classify_utterance()/
+// detect_addressed_agent() (unchanged) already reads addressing directly
+// out of the raw utterance text server-side -- the floor manager no longer
+// needs the client to pre-parse "Market Validator, ..." style prefixes or
+// pre-grant a target's floor before sending.
 
 function isPlaceholderSpeakerUri(value) {
   if (!value || typeof value !== "string") return false;
@@ -488,15 +491,19 @@ function removeInvitedAgent(agentUrl) {
 function addInvitedAgent(agentUrl, conversationalName = "") {
   if (!agentUrl) return;
   const normalizedTarget = normalizeAgentId(agentUrl);
+  const fallbackName = conversationalName || knownNameForUrl(agentUrl) || resolveDisplayNameForTarget(agentUrl) || "";
 
   for (const agent of state.invitedAgents) {
     if (normalizeAgentId(agent.url) === normalizedTarget) {
-      if (conversationalName) agent.conversationalName = conversationalName;
+      if (conversationalName) {
+        agent.conversationalName = conversationalName;
+      } else if (!agent.conversationalName || isUrlLike(agent.conversationalName)) {
+        agent.conversationalName = fallbackName;
+      }
       return;
     }
   }
 
-  const fallbackName = conversationalName || knownNameForUrl(agentUrl) || resolveDisplayNameForTarget(agentUrl) || "";
   state.invitedAgents.push({
     url: cleanUrlCandidate(agentUrl),
     conversationalName: fallbackName,
@@ -609,6 +616,34 @@ function clearConversationHistory() {
   ui.conversation.textContent = "";
 }
 
+function copyEventLogToClipboard() {
+  const text = ui.eventLog.textContent;
+  if (!text) {
+    alert("Event log is empty.");
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    alert("Event log copied to clipboard!");
+  }).catch(err => {
+    logError("Failed to copy to clipboard", err);
+    alert("Failed to copy to clipboard.");
+  });
+}
+
+function copyErrorLogToClipboard() {
+  const text = ui.errorLog.textContent;
+  if (!text) {
+    alert("Error log is empty.");
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    alert("Error log copied to clipboard!");
+  }).catch(err => {
+    logError("Failed to copy to clipboard", err);
+    alert("Failed to copy to clipboard.");
+  });
+}
+
 function clearEventLog() {
   ui.eventLog.textContent = "";
 }
@@ -708,21 +743,16 @@ function renderAgents() {
 
     const floorBtn = document.createElement("button");
     const revoked = state.revokedAgents.has(normalizeAgentId(agent.url));
-    floorBtn.textContent = revoked ? "Grant Floor" : "Revoke Floor";
+    floorBtn.textContent = revoked ? "grantFloor" : "revokeFloor";
     floorBtn.className = revoked ? "floor-btn-grant" : "floor-btn-revoke";
     floorBtn.addEventListener("click", async () => {
-      if (revoked) {
-        // Requested behavior: make grant floor return agent to invited state
-        state.revokedAgents.delete(normalizeAgentId(agent.url));
-        renderAgents();
-        await sendControlEvent("grantFloor", agent.url);
-        return;
-      }
-
-      const ok = await sendControlEvent("revokeFloor", agent.url);
-      if (!ok) return;
-      state.revokedAgents.add(normalizeAgentId(agent.url));
-      renderAgents();
+      // Advisory now that a convener may be registered (Delegate-to-Convener
+      // per the OFP routing table) -- don't optimistically mutate local
+      // state before the request completes. sendControlEvent's response
+      // handling (via processIncomingEnvelope) is what actually updates
+      // state.revokedAgents + re-renders, from the floor manager's own
+      // authoritative grantFloor/revokeFloor events.
+      await sendControlEvent(revoked ? "grantFloor" : "revokeFloor", agent.url);
     });
 
     const uninviteBtn = document.createElement("button");
@@ -763,19 +793,39 @@ function serializeConversation() {
   };
 }
 
-function buildDialogEvent(userInput) {
+function getSelectedResponsePattern() {
+  if (ui.responsePatternRoundRobin?.checked) return "round_robin";
+  return "default";
+}
+
+function buildDialogEvent(userInput, routingMode = "") {
+  const features = {
+    text: {
+      mimeType: "text/plain",
+      tokens: [{ value: userInput }]
+    }
+  };
+
+  if (routingMode && routingMode !== "default") {
+    features.routingMode = {
+      mimeType: "text/plain",
+      tokens: [{ value: routingMode }]
+    };
+  }
+
+  const maxWords = ui.maxWordsSlider ? parseInt(ui.maxWordsSlider.value, 10) : 125;
+  features.maxWords = {
+    mimeType: "text/plain",
+    tokens: [{ value: String(maxWords) }]
+  };
+
   return {
     speakerUri: state.clientUri,
-    features: {
-      text: {
-        mimeType: "text/plain",
-        tokens: [{ value: userInput }]
-      }
-    }
+    features
   };
 }
 
-function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent, usePrivate) {
+function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent, usePrivate, routingMode = "") {
   const payload = {
     openFloor: {
       conversation: serializeConversation(),
@@ -802,7 +852,7 @@ function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent
       const event = {
         eventType: "utterance",
         parameters: {
-          dialogEvent: buildDialogEvent(userInput)
+          dialogEvent: buildDialogEvent(userInput, routingMode)
         }
       };
 
@@ -811,7 +861,7 @@ function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent
           speakerUri: addressedAgent.speaker_uri,
           private: !!usePrivate
         };
-      } else if (usePrivate) {
+      } else {
         event.to = {
           serviceUrl: targetUrl,
           private: !!usePrivate
@@ -824,7 +874,7 @@ function buildEnvelopeForTarget(targetUrl, eventTypes, userInput, addressedAgent
   return payload;
 }
 
-async function proxySend(targetUrl, payload, timeoutMs = 10000) {
+async function proxySend(targetUrl, payload, timeoutMs = CONTROL_EVENT_TIMEOUT_MS) {
   const gatewayUrl = gatewayPath("/api/proxy-send");
   const response = await fetch(gatewayUrl, {
     method: "POST",
@@ -844,6 +894,135 @@ async function proxySend(targetUrl, payload, timeoutMs = 10000) {
   }
 }
 
+// Streaming counterpart to proxySend: the gateway relays the upstream body as
+// bytes arrive (newline-delimited JSON envelopes) instead of buffering the
+// whole response first. onEnvelope is called once per parsed line, as soon as
+// it's available, so callers can render each turn immediately rather than
+// waiting for the entire response to finish. Used by round-robin mode so each
+// specialist's answer shows up as soon as that specialist replies.
+async function proxyStream(targetUrl, payload, timeoutMs, onEnvelope) {
+  const gatewayUrl = gatewayPath("/api/proxy-stream");
+  const response = await fetch(gatewayUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetUrl, payload, timeoutMs })
+  });
+
+  if (!response.ok || !response.body) {
+    const preview = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+    throw new Error(`Gateway stream failed from ${gatewayUrl} (${response.status} ${response.statusText}): ${preview}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      onEnvelope(JSON.parse(trimmed));
+    } catch (error) {
+      logError(`Failed to parse streamed line from ${targetUrl}`, String(error));
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIndex;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        consumeLine(buffer.slice(0, newlineIndex));
+        buffer = buffer.slice(newlineIndex + 1);
+      }
+    }
+    if (done) break;
+  }
+
+  consumeLine(buffer);
+}
+
+// Floor-managed counterparts to proxySend/proxyStream: no targetUrl -- the
+// floor manager (web-floor/api/floor_router.py) derives who gets each event
+// from its own conversant/floor state and the OFP routing table, not from a
+// client-chosen target. This is the ONLY way floor-managed traffic (invite,
+// grantFloor/revokeFloor, utterance) should reach agents now; /api/proxy-send
+// and /api/proxy-stream remain for genuinely raw, unmanaged single-agent pokes.
+async function floorSend(payload, timeoutMs = CONTROL_EVENT_TIMEOUT_MS) {
+  const gatewayUrl = gatewayPath("/api/floor/send");
+  const response = await fetch(gatewayUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload, timeoutMs })
+  });
+
+  const rawText = await response.text();
+
+  try {
+    return rawText ? JSON.parse(rawText) : {};
+  } catch (_error) {
+    const preview = rawText.replace(/\s+/g, " ").slice(0, 160);
+    throw new Error(
+      `Floor manager returned non-JSON from ${gatewayUrl} (${response.status} ${response.statusText}): ${preview}`
+    );
+  }
+}
+
+async function floorStream(payload, timeoutMs, onEnvelope) {
+  const gatewayUrl = gatewayPath("/api/floor/stream");
+  const response = await fetch(gatewayUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload, timeoutMs })
+  });
+
+  if (!response.ok || !response.body) {
+    const preview = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+    throw new Error(`Floor manager stream failed from ${gatewayUrl} (${response.status} ${response.statusText}): ${preview}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      onEnvelope(JSON.parse(trimmed));
+    } catch (error) {
+      logError("Failed to parse streamed line from floor manager", String(error));
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIndex;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        consumeLine(buffer.slice(0, newlineIndex));
+        buffer = buffer.slice(newlineIndex + 1);
+      }
+    }
+    if (done) break;
+  }
+
+  consumeLine(buffer);
+}
+
+async function fetchFloorState(conversationId) {
+  const gatewayUrl = gatewayPath(`/api/floor/state?conversationId=${encodeURIComponent(conversationId)}`);
+  const response = await fetch(gatewayUrl);
+  if (!response.ok) return null;
+  try {
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
 function normalizeLeadingUrlInText(rawText, speakerUri = "", speakerUrl = "") {
   if (!rawText || typeof rawText !== "string") return rawText;
   const trimmed = rawText.trimStart();
@@ -860,6 +1039,21 @@ function normalizeLeadingUrlInText(rawText, speakerUri = "", speakerUrl = "") {
   remainder = remainder.replace(/^[\s,:;.!?\-]+/, "");
   if (!remainder) return `${leadingWs}${resolved}`;
   return `${leadingWs}${resolved}: ${remainder}`;
+}
+
+function extractFeatureTokenValue(feature) {
+  if (!feature) return "";
+  const tokens = feature?.tokens || [];
+  if (tokens.length) {
+    if (typeof tokens[0] === "string") return tokens[0];
+    return tokens[0]?.value || "";
+  }
+  const values = feature?.values || [];
+  if (values.length) {
+    if (typeof values[0] === "string") return values[0];
+    return values[0]?.value || "";
+  }
+  return "";
 }
 
 function prependDirectAddressContext(text, directedAddressee, { speakerName = "", speakerUri = "", speakerUrl = "" } = {}) {
@@ -942,13 +1136,172 @@ function openHtmlInPopup(htmlContent) {
     return;
   }
 
-  setTimeout(() => {
-    try {
-      URL.revokeObjectURL(htmlUrl);
-    } catch (_) {
-      // no-op
+  scheduleBlobUrlCleanup(popup, htmlUrl);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  let html = escapeHtml(text || "");
+
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  return html;
+}
+
+function markdownToHtml(markdownText) {
+  const lines = String(markdownText || "").replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+
+  let inCodeBlock = false;
+  let codeBuffer = [];
+  let listType = null;
+
+  const closeList = () => {
+    if (!listType) return;
+    out.push(listType === "ol" ? "</ol>" : "</ul>");
+    listType = null;
+  };
+
+  for (const line of lines) {
+    if (/^```/.test(line.trim())) {
+      closeList();
+      if (inCodeBlock) {
+        out.push(`<pre><code>${escapeHtml(codeBuffer.join("\n"))}</code></pre>`);
+        codeBuffer = [];
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      continue;
     }
-  }, 60000);
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+      continue;
+    }
+
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^---+$/.test(line.trim())) {
+      closeList();
+      out.push("<hr>");
+      continue;
+    }
+
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    if (unordered) {
+      if (listType !== "ul") {
+        closeList();
+        out.push("<ul>");
+        listType = "ul";
+      }
+      out.push(`<li>${renderInlineMarkdown(unordered[1])}</li>`);
+      continue;
+    }
+
+    const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
+    if (ordered) {
+      if (listType !== "ol") {
+        closeList();
+        out.push("<ol>");
+        listType = "ol";
+      }
+      out.push(`<li>${renderInlineMarkdown(ordered[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    out.push(`<p>${renderInlineMarkdown(line)}</p>`);
+  }
+
+  if (inCodeBlock) {
+    out.push(`<pre><code>${escapeHtml(codeBuffer.join("\n"))}</code></pre>`);
+  }
+  closeList();
+
+  return out.join("\n");
+}
+
+function buildConversationMarkdownPopupHtml(markdownText) {
+  const renderedHtml = markdownToHtml(markdownText);
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conversation History (Markdown)</title>
+  <style>
+    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #ffffff; color: #111111; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .card { background: #ffffff; border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    h1,h2,h3,h4,h5,h6 { margin: 0.65em 0 0.35em; color: #111111; }
+    p, li { line-height: 1.5; }
+    a { color: #0b57d0; }
+    code { background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 0 5px; }
+    pre { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; overflow: auto; }
+    hr { border: none; border-top: 1px solid #d1d5db; margin: 14px 0; }
+    .meta { color: #4b5563; font-size: 13px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      ${renderedHtml}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function openConversationMarkdownPopup() {
+  if (!state.conversationHistory.length) {
+    logError("Conversation history is empty.");
+    return;
+  }
+
+  const lines = ["# Conversation History", ""];
+  for (const entry of state.conversationHistory) {
+    lines.push(`## ${entry.speaker || "Unknown"}`);
+    lines.push("");
+    lines.push(entry.text || "");
+    lines.push("");
+  }
+  const markdownText = lines.join("\n");
+
+  const blob = new Blob([buildConversationMarkdownPopupHtml(markdownText)], { type: "text/html" });
+  const htmlUrl = URL.createObjectURL(blob);
+  const popup = window.open(htmlUrl, "webFloorConversationMarkdown", "popup=yes,width=1100,height=800,resizable=yes,scrollbars=yes");
+
+  if (!popup) {
+    logError("Popup blocked while opening markdown conversation view.");
+    URL.revokeObjectURL(htmlUrl);
+    return;
+  }
+
+  scheduleBlobUrlCleanup(popup, htmlUrl);
 }
 
 function buildInteractivePopupHtml(htmlContent) {
@@ -1058,7 +1411,56 @@ function buildInteractivePopupHtml(htmlContent) {
 </html>`;
 }
 
-function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = null } = {}) {
+// Creates a button that opens a pre-built HTML report in a popup.
+function queueHtmlPopupButton(htmlContent, buttonLabel) {
+  if (!htmlContent || !ui.htmlPopupArea) return;
+
+  const blob = new Blob([buildInteractivePopupHtml(htmlContent)], { type: "text/html" });
+  const htmlUrl = URL.createObjectURL(blob);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "html-popup-btn";
+  btn.textContent = `\u{1F4CA} ${buttonLabel || "Analysis"} \u2192`;
+  btn.addEventListener("click", () => {
+    const popup = window.open(htmlUrl, "webFloorHtmlPopup", "popup=yes,width=980,height=720,resizable=yes,scrollbars=yes");
+    if (!popup) {
+      logError("Popup blocked. Please allow popups for this page in your browser.");
+    } else {
+      btn.remove();
+      scheduleBlobUrlCleanup(popup, htmlUrl);
+    }
+  });
+
+  ui.htmlPopupArea.appendChild(btn);
+  btn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Builds the combined multi-agent report popup from accumulated entries.
+// Pulled out of processIncomingEnvelope so callers driving multiple separate
+// envelopes for one logical round (e.g. round-robin streaming, one envelope
+// per specialist turn) can accumulate entries across all of them and build
+// the report once at the end, instead of getting a fresh, single-entry array
+// on every call.
+function buildAndQueueCombinedReport(htmlReportEntries) {
+  if (!(htmlReportEntries.length > 1 || htmlReportEntries.some(e => e.html))) return;
+
+  const esc = s => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sections = htmlReportEntries.map(entry => {
+    const nameHtml = `<h2 style="font-family:sans-serif;margin:0 0 8px;font-size:1.1rem;color:#1a1a1a;border-bottom:2px solid #2196F3;padding-bottom:4px">${esc(entry.name)}</h2>`;
+    const textHtml = entry.text
+      ? `<p style="font-family:sans-serif;margin:0 0 12px;font-size:0.9rem;color:#333;line-height:1.5">${esc(entry.text)}</p>`
+      : "";
+    return `<section style="margin-bottom:28px">${nameHtml}${textHtml}${entry.html}</section>`;
+  });
+  const combinedHtml = sections.join('<hr style="border:none;border-top:1px solid #e0e0e0;margin:4px 0 28px">');
+  const label = htmlReportEntries.length === 1
+    ? `${htmlReportEntries[0].name} chart`
+    : "Full Analysis Report";
+  queueHtmlPopupButton(combinedHtml, label);
+}
+
+function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = null, reportEntries = null, buildReport = true } = {}) {
   let normalizedResponse = responseData;
   if (typeof normalizedResponse === "string") {
     try {
@@ -1068,31 +1470,22 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
     }
   }
 
-  function queueHtmlPopupButton(htmlContent, senderName) {
-    if (!htmlContent || !ui.htmlPopupArea) return;
-
-    const blob = new Blob([buildInteractivePopupHtml(htmlContent)], { type: "text/html" });
-    const htmlUrl = URL.createObjectURL(blob);
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "html-popup-btn";
-    btn.textContent = `\u{1F4C4} View ${senderName || "agent"} response \u2192`;
-    btn.addEventListener("click", () => {
-      const popup = window.open(htmlUrl, "webFloorHtmlPopup", "popup=yes,width=980,height=720,resizable=yes,scrollbars=yes");
-      if (!popup) {
-        logError("Popup blocked. Please allow popups for this page in your browser.");
-      } else {
-        btn.remove();
-        setTimeout(() => { try { URL.revokeObjectURL(htmlUrl); } catch (_) {} }, 60000);
-      }
-    });
-
-    ui.htmlPopupArea.appendChild(btn);
-  }
+  // Accumulates all agent utterance responses in this envelope for the
+  // combined report. When a caller is driving multiple envelopes for one
+  // logical round (round-robin streaming), it supplies a shared array via
+  // reportEntries so entries accumulate across calls instead of resetting.
+  const htmlReportEntries = reportEntries || [];
 
   const envelope = normalizedResponse?.openFloor || normalizedResponse?.ovon || normalizedResponse?.openfloor || normalizedResponse || {};
   const events = Array.isArray(envelope?.events) ? envelope.events : [];
+
+  const eventTarget = (event) => {
+    const to = event?.to || event?.parameters?.to || {};
+    return {
+      serviceUrl: cleanUrlCandidate(to?.serviceUrl || ""),
+      speakerUri: to?.speakerUri || "",
+    };
+  };
 
   if (!events.length) {
     if (ui.showOutgoing.checked) {
@@ -1107,21 +1500,44 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
     const eventType = event?.eventType || "";
 
     if (eventType === "uninvite") {
-      removeInvitedAgent(targetUrl);
+      const target = eventTarget(event).serviceUrl || targetUrl;
+      removeInvitedAgent(target);
+      continue;
+    }
+
+    if (eventType === "grantFloor") {
+      const target = eventTarget(event).serviceUrl;
+      if (target) {
+        state.revokedAgents.delete(normalizeAgentId(target));
+        renderAgents();
+      }
+      continue;
+    }
+
+    if (eventType === "revokeFloor") {
+      const target = eventTarget(event).serviceUrl;
+      if (target) {
+        state.revokedAgents.add(normalizeAgentId(target));
+        renderAgents();
+      }
       continue;
     }
 
     if (eventType === "invite") {
-      const inviteTargetUrl = event?.to?.serviceUrl;
+      const target = eventTarget(event);
+      const inviteTargetUrl = target.serviceUrl;
       if (inviteTargetUrl) {
         const normalizedTarget = cleanUrlCandidate(inviteTargetUrl);
+        const inviteTargetName = resolveDisplayNameForTarget(normalizedTarget, target.speakerUri || "");
         const alreadyInvited = state.invitedAgents.some(a => normalizeAgentId(a.url) === normalizeAgentId(normalizedTarget));
         if (!alreadyInvited && normalizedTarget) {
           updateConversationHistory("Floor", `Inviting ${knownNameForUrl(normalizedTarget) || normalizedTarget}...`);
-          addInvitedAgent(normalizedTarget);
+          addInvitedAgent(normalizedTarget, inviteTargetName);
           sendControlEvent("invite", normalizedTarget).catch(err => {
             logError(`Agent-initiated invite to ${normalizedTarget} failed`, String(err));
           });
+        } else if (alreadyInvited && normalizedTarget) {
+          addInvitedAgent(normalizedTarget, inviteTargetName);
         }
       }
       continue;
@@ -1159,11 +1575,31 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
 
     if (eventType === "utterance") {
       const dialog = event?.parameters?.dialogEvent || event?.dialogEvent || {};
-      const speakerUri = dialog?.speakerUri || "Unknown";
-      if (speakerUri && speakerUri !== "Unknown" && normalizeAgentId(speakerUri) !== normalizeAgentId(state.clientUri)) {
-        addConversantToGlobal(targetUrl || urlFromSpeakerUri(speakerUri), "", speakerUri);
+      const sourceNameFeature = dialog?.features?.sourceName;
+      const sourceName = (extractFeatureTokenValue(sourceNameFeature) || "").trim();
+
+      // Every response now comes from the floor manager (targetUrl no longer
+      // identifies who's actually speaking -- it's always the gateway), so
+      // who spoke is read entirely from the event's own dialogEvent.speakerUri.
+      const speakerUri = dialog?.speakerUri || "";
+      const speakingAgentUrl = urlFromSpeakerUri(speakerUri) || cleanUrlCandidate(speakerUri) || cleanUrlCandidate(targetUrl);
+      const speakingAgentId = normalizeAgentId(speakingAgentUrl);
+
+      if (isRevokedSpeaker(speakingAgentUrl, speakerUri)) {
+        // Defensive only: the floor manager shouldn't deliver an utterance
+        // from an agent it hasn't granted the floor to, but suppress it
+        // client-side too in case local state is momentarily stale.
+        if (ui.showOutgoing.checked) {
+          logEvent(`Suppressed utterance from revoked agent ${speakingAgentUrl}`, event);
+        }
+        continue;
       }
-      const displayName = resolveDisplayNameForTarget(targetUrl, speakerUri);
+
+      const effectiveSpeakerUri = speakerUri || "Unknown";
+      if (effectiveSpeakerUri && effectiveSpeakerUri !== "Unknown" && normalizeAgentId(effectiveSpeakerUri) !== normalizeAgentId(state.clientUri)) {
+        addConversantToGlobal(speakingAgentUrl || urlFromSpeakerUri(effectiveSpeakerUri), "", effectiveSpeakerUri);
+      }
+      const displayName = sourceName || resolveDisplayNameForTarget(speakingAgentUrl || targetUrl, effectiveSpeakerUri);
       const directedTarget = resolveDirectedAddresseeForEvent(event, directedAddressee);
 
       const textFeature = dialog?.features?.text || {};
@@ -1179,80 +1615,38 @@ function processIncomingEnvelope(responseData, targetUrl, { directedAddressee = 
       }
       if (!text) continue;
 
-      text = normalizeLeadingUrlInText(text, speakerUri, targetUrl);
+      text = normalizeLeadingUrlInText(text, effectiveSpeakerUri, speakingAgentUrl || targetUrl);
       text = prependDirectAddressContext(text, directedTarget, {
         speakerName: displayName,
-        speakerUri,
+        speakerUri: effectiveSpeakerUri,
         speakerUrl: targetUrl
       });
 
-      updateConversationHistory(displayName, text, speakerUri, utteranceId);
+      updateConversationHistory(displayName, text, effectiveSpeakerUri, utteranceId);
 
-      const htmlTokens = dialog?.features?.html?.tokens || [];
-      if (htmlTokens.length && htmlTokens[0]?.value) {
-        queueHtmlPopupButton(htmlTokens[0].value, displayName);
-      }
+      // Floor state (grantFloor/revokeFloor) is no longer inferred from
+      // "an agent just spoke" -- the floor manager reports its own explicit
+      // grantFloor/revokeFloor events (handled above), authoritatively,
+      // as real events in this same response envelope.
 
-      // Rebroadcast incoming agent utterances to other agents as OFP messages.
-      if (speakerUri && speakerUri !== "Unknown" && speakerUri !== state.clientUri) {
-        const otherAgentUrls = state.invitedAgents
-          .map(agent => agent.url)
-          .filter(url => normalizeAgentId(url) !== normalizeAgentId(targetUrl));
+      const htmlVal = dialog?.features?.html?.tokens?.[0]?.value || "";
+      // Collect this response for the combined report built after all events are processed.
+      htmlReportEntries.push({ name: displayName, text, html: htmlVal });
 
-        if (otherAgentUrls.length > 0) {
-          const rebroadcastEvent = {
-            eventType: "utterance",
-            parameters: {
-              dialogEvent: JSON.parse(JSON.stringify(dialog || {}))
-            }
-          };
-
-          // Preserve explicit addressing when an agent intentionally targets
-          // another agent. The client still broadcasts this same event to all
-          // agents, and each recipient decides whether to act based on `to`.
-          if (event?.to && typeof event.to === "object") {
-            rebroadcastEvent.to = JSON.parse(JSON.stringify(event.to));
-          }
-
-          // Send OFP envelopes to all other agents via the client rebroadcast path.
-          // If `rebroadcastEvent.to` is present, only the addressed agent should respond.
-          otherAgentUrls.forEach(otherUrl => {
-            const broadcastPayload = {
-              openFloor: {
-                conversation: serializeConversation(),
-                sender: {
-                  speakerUri: state.clientUri,
-                  serviceUrl: state.clientUrl
-                },
-                events: [rebroadcastEvent]
-              }
-            };
-
-            proxySend(otherUrl, broadcastPayload, 10000)
-              .then((response) => {
-                if (!response?.ok) {
-                  if (ui.showOutgoing.checked) {
-                    logError(`Broadcast request failed for ${otherUrl}`, response);
-                  }
-                  return;
-                }
-
-                const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
-                if (responseEnvelope) {
-                  processIncomingEnvelope(responseEnvelope, otherUrl);
-                } else if (ui.showOutgoing.checked) {
-                  logError(`Non-JSON broadcast response from ${otherUrl}`, response);
-                }
-              })
-              .catch(error => {
-                if (ui.showOutgoing.checked) {
-                  logError(`Failed to broadcast utterance to ${otherUrl}`, String(error));
-                }
-              });
-          });
-        }
-      }
+      // Per the Open Floor Interoperable Conversation Envelope spec, routing
+      // (including rebroadcasting an utterance to other conversants) is the
+      // floor manager's responsibility alone -- a conversant (this client,
+      // or any agent) never redistributes another conversant's event itself.
+      // Multi-agent fan-out belongs server-side, in the floor manager.
     }
+  }
+
+  // Build combined report for multi-agent responses (convener fan-out) or
+  // any HTML content. Skipped when the caller supplied a shared
+  // reportEntries array (round-robin streaming) -- it builds the report
+  // itself, once, after all of that round's envelopes have been processed.
+  if (buildReport) {
+    buildAndQueueCombinedReport(htmlReportEntries);
   }
 
   if (ui.showIncoming.checked) {
@@ -1286,14 +1680,26 @@ function resolveAgentEnvelopeFromGatewayResponse(response) {
 }
 
 async function sendControlEvent(eventType, agentUrl) {
+  // Floor-managed: grantFloor/revokeFloor/uninvite are Delegate-to-Convener
+  // events per the OFP spec's routing table when a convener is registered
+  // (an advisory request convener can veto/substitute), or Pass-Through
+  // directly otherwise -- either way, go through the floor manager, never
+  // straight to the agent.
   setAgentStatus(agentUrl, "working");
 
   const payload = buildEnvelopeForTarget(agentUrl, [eventType], "", null, false);
   if (ui.showOutgoing.checked) logEvent(`Outgoing ${eventType} to ${agentUrl}`, payload);
 
-  const response = await proxySend(agentUrl, payload, 10000);
+  let response;
+  try {
+    response = await floorSend(payload, CONTROL_EVENT_TIMEOUT_MS);
+  } catch (error) {
+    setAgentStatus(agentUrl, "error");
+    logError(`${eventType} failed for ${agentUrl}`, String(error));
+    return false;
+  }
 
-  if (!response?.ok) {
+  if (!response?.openFloor) {
     setAgentStatus(agentUrl, "error");
     logError(`${eventType} failed for ${agentUrl}`, response);
     return false;
@@ -1305,38 +1711,64 @@ async function sendControlEvent(eventType, agentUrl) {
     setAgentStatus(agentUrl, "idle");
   }
 
-  const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
-  if (responseEnvelope) processIncomingEnvelope(responseEnvelope, agentUrl, { directedAddressee: null });
+  // The floor manager's own response events (e.g. convener substituting a
+  // different decision) drive UI state from here -- see the grantFloor/
+  // revokeFloor branches in processIncomingEnvelope.
+  processIncomingEnvelope(response, agentUrl, { directedAddressee: null });
   return true;
-}
-
-function collectTargetUrls(eventTypes, assistantUrl) {
-  if (eventTypes.includes("invite") || eventTypes.includes("getManifests")) {
-    return assistantUrl ? [assistantUrl] : [];
-  }
-
-  if (ui.sendToAll.checked) {
-    return state.invitedAgents.map((agent) => agent.url);
-  }
-
-  return state.invitedAgents.filter((agent) => agent.selected).map((agent) => agent.url);
 }
 
 async function sendEvents(eventTypes) {
   const assistantUrlRaw = ui.assistantUrl.value || "";
   const assistantUrl = cleanUrlCandidate(assistantUrlRaw.includes(" | ") ? assistantUrlRaw.split(" | ").slice(-1)[0] : assistantUrlRaw);
   const userInput = (ui.utteranceInput.value || "").trim();
+  const responsePattern = getSelectedResponsePattern();
 
-  let targetUrls = collectTargetUrls(eventTypes, assistantUrl);
-  let addressedAgent = null;
-  let parsedUserInput = userInput;
+  if (eventTypes.includes("utterance") && !userInput) {
+    logError("Please enter some text before sending an utterance.");
+    return;
+  }
 
-  if (eventTypes.includes("utterance")) {
-    if (!userInput) {
-      logError("Please enter some text before sending an utterance.");
+  // getManifests is a single-agent probe. Per the OFP routing table it's
+  // Pass-Through to ALL conversants once floor-managed -- not what a manual
+  // "check this one candidate agent's manifest" click wants (often before
+  // it's even invited) -- so it stays on the raw, unmanaged proxy path.
+  if (eventTypes.length === 1 && eventTypes[0] === "getManifests") {
+    if (!assistantUrl) {
+      logError("No Assistant URL specified.");
       return;
     }
+    setAgentStatus(assistantUrl, "working");
+    const payload = buildEnvelopeForTarget(assistantUrl, ["getManifests"], "", null, false);
+    if (ui.showOutgoing.checked) logEvent(`Outgoing to ${assistantUrl}`, payload);
+    try {
+      const response = await proxySend(assistantUrl, payload, CONTROL_EVENT_TIMEOUT_MS);
+      if (!response?.ok) {
+        setAgentStatus(assistantUrl, "error");
+        logError(`Request failed for ${assistantUrl}`, response);
+        return;
+      }
+      setAgentStatus(assistantUrl, "idle");
+      const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
+      if (responseEnvelope) {
+        processIncomingEnvelope(responseEnvelope, assistantUrl, { directedAddressee: null });
+      } else {
+        logError(`Non-JSON response from ${assistantUrl}`, response);
+        setAgentStatus(assistantUrl, "error");
+      }
+    } catch (error) {
+      setAgentStatus(assistantUrl, "error");
+      logError(`Request failed for ${assistantUrl}`, String(error));
+    }
+    return;
+  }
 
+  if (eventTypes.includes("invite") && !assistantUrl) {
+    logError("No Assistant URL specified.");
+    return;
+  }
+
+  if (eventTypes.includes("utterance")) {
     // Always render the user's utterance locally, even if downstream parsing/sending fails.
     try {
       updateConversationHistory("You", userInput, "", "", true);
@@ -1350,30 +1782,6 @@ async function sendEvents(eventTypes) {
       ui.conversation.scrollTop = ui.conversation.scrollHeight;
       logError("Failed to render user utterance via standard formatter; used fallback", String(error));
     }
-
-    try {
-      addressedAgent = findAddressedAgentInUtterance(userInput);
-      if (addressedAgent && state.invitedAgents.length) {
-        if (isUrlLike(addressedAgent.name)) {
-          addressedAgent.name = resolveDisplayNameForTarget(addressedAgent.url || urlFromSpeakerUri(addressedAgent.speaker_uri), addressedAgent.speaker_uri);
-        }
-        parsedUserInput = parseUtteranceForAddressedAgent(userInput, addressedAgent);
-        targetUrls = state.invitedAgents.map((agent) => agent.url);
-      }
-    } catch (error) {
-      logError("Failed to parse addressed agent in utterance", String(error));
-    }
-  }
-
-  if (!targetUrls.length) {
-    if (eventTypes.includes("invite") || eventTypes.includes("getManifests")) {
-      logError("No Assistant URL specified.");
-    } else if (!state.invitedAgents.length) {
-      logError("No invited agents to send to. Invite an agent first.");
-    } else {
-      logError("No agents selected. Enable send-to-all or select agent checkboxes.");
-    }
-    return;
   }
 
   if (assistantUrl && !state.previousUrls.some((url) => normalizeAgentId(url) === normalizeAgentId(assistantUrl))) {
@@ -1381,54 +1789,65 @@ async function sendEvents(eventTypes) {
     refreshKnownAgentList();
   }
 
-  const usePrivate = !ui.sendToAll.checked;
-  const timeoutMs = eventTypes.includes("utterance") ? 30000 : 10000;
+  // No more per-target fan-out, no more client-side addressed-agent
+  // detection or round-robin convener-target resolution: the floor manager
+  // (floor_router.py) derives who gets this from its own conversant/floor
+  // state and the OFP routing table, and convener's existing
+  // classify_utterance()/detect_addressed_agent() (unchanged) reads
+  // addressing directly out of the utterance text server-side -- the same
+  // way it always has. One envelope, one request.
+  const events = [];
+  if (eventTypes.includes("invite")) {
+    events.push({ eventType: "invite", to: { serviceUrl: assistantUrl } });
+  }
+  if (eventTypes.includes("utterance")) {
+    events.push({
+      eventType: "utterance",
+      parameters: { dialogEvent: buildDialogEvent(userInput, responsePattern) },
+    });
+  }
+  if (!events.length) return;
 
-  const sendTasks = targetUrls.map(async (targetUrl) => {
-    if (eventTypes.includes("invite")) {
-      addInvitedAgent(targetUrl);
-      renderAgents();
-      updateSendButtonState();
-    }
+  const payload = {
+    openFloor: {
+      conversation: serializeConversation(),
+      sender: { speakerUri: state.clientUri, serviceUrl: state.clientUrl },
+      events,
+    },
+  };
+  const timeoutMs = eventTypes.includes("utterance") ? UTTERANCE_TIMEOUT_MS : CONTROL_EVENT_TIMEOUT_MS;
+  if (ui.showOutgoing.checked) logEvent("Outgoing to floor manager", payload);
 
-    setAgentStatus(targetUrl, "working");
+  if (eventTypes.includes("invite")) {
+    addInvitedAgent(assistantUrl);
+    renderAgents();
+    updateSendButtonState();
+  }
 
-    const payload = buildEnvelopeForTarget(targetUrl, eventTypes, parsedUserInput, addressedAgent, usePrivate);
-    if (ui.showOutgoing.checked) logEvent(`Outgoing to ${targetUrl}`, payload);
-    if (ui.showOutgoing.checked) {
-      logEvent(`Gateway timeout for ${targetUrl}`, {
-        eventTypes,
-        timeoutMs
+  const floorManagerId = gatewayPath("/");
+  const isRoundRobinUtterance = eventTypes.includes("utterance") && responsePattern === "round_robin";
+
+  try {
+    if (isRoundRobinUtterance) {
+      // Each turn arrives as its own envelope, so accumulate report entries
+      // across all of them and build the combined "Full Analysis Report"
+      // popup once at the end.
+      const reportEntries = [];
+      await floorStream(payload, timeoutMs, (envelope) => {
+        processIncomingEnvelope(envelope, floorManagerId, { reportEntries, buildReport: false });
       });
-    }
-
-    let response;
-    try {
-      response = await proxySend(targetUrl, payload, timeoutMs);
-    } catch (error) {
-      setAgentStatus(targetUrl, "error");
-      logError(`Request failed for ${targetUrl}`, String(error));
-      return;
-    }
-
-    if (!response?.ok) {
-      setAgentStatus(targetUrl, "error");
-      logError(`Request failed for ${targetUrl}`, response);
-      return;
-    }
-
-    setAgentStatus(targetUrl, "idle");
-
-    const responseEnvelope = resolveAgentEnvelopeFromGatewayResponse(response);
-    if (responseEnvelope) {
-      processIncomingEnvelope(responseEnvelope, targetUrl, { directedAddressee: addressedAgent });
+      buildAndQueueCombinedReport(reportEntries);
     } else {
-      logError(`Non-JSON response from ${targetUrl}`, response);
-      setAgentStatus(targetUrl, "error");
+      const response = await floorSend(payload, timeoutMs);
+      if (response?.openFloor) {
+        processIncomingEnvelope(response, floorManagerId);
+      } else {
+        logError("Non-JSON response from floor manager", response);
+      }
     }
-  });
-
-  await Promise.allSettled(sendTasks);
+  } catch (error) {
+    logError("Floor manager request failed", String(error));
+  }
 }
 
 function escapeRegExp(value) {
@@ -1443,7 +1862,13 @@ function bindEvents() {
     sendEvents(events);
   });
   ui.sendUtteranceBtn.addEventListener("click", () => sendEvents(["utterance"]));
+  if (ui.maxWordsSlider && ui.maxWordsValue) {
+    ui.maxWordsSlider.addEventListener("input", updateSliderBubble);
+  }
   ui.clearConversationBtn.addEventListener("click", clearConversationHistory);
+  if (ui.showConversationMarkdownBtn) {
+    ui.showConversationMarkdownBtn.addEventListener("click", openConversationMarkdownPopup);
+  }
   if (ui.copyConversationBtn) {
     ui.copyConversationBtn.addEventListener("click", () => {
       const text = ui.conversation ? ui.conversation.textContent : "";
@@ -1479,6 +1904,8 @@ function bindEvents() {
     document.body.removeChild(ta);
     return ok;
   }
+  ui.copyEventLogBtn.addEventListener("click", copyEventLogToClipboard);
+  ui.copyErrorLogBtn.addEventListener("click", copyErrorLogToClipboard);
   ui.clearEventLogBtn.addEventListener("click", clearEventLog);
   ui.clearErrorLogBtn.addEventListener("click", clearErrorLog);
 
@@ -1509,12 +1936,30 @@ function bindEvents() {
   }
 }
 
+function updateSliderBubble() {
+  const slider = ui.maxWordsSlider;
+  const bubble = ui.maxWordsValue;
+  if (!slider || !bubble) return;
+  const val = parseInt(slider.value, 10);
+  const min = parseInt(slider.min, 10);
+  const max = parseInt(slider.max, 10);
+  const pct = (val - min) / (max - min);
+  // Adjust for thumb radius (~8px) so bubble tracks the thumb, not the track edge
+  const thumbR = 8;
+  const trackW = slider.offsetWidth;
+  const leftPx = pct * (trackW - 2 * thumbR) + thumbR;
+  bubble.style.left = `${leftPx}px`;
+  bubble.textContent = val;
+}
+
 function init() {
   refreshKnownAgentList();
   renderAgents();
   updateSendButtonState();
   bindEvents();
   setDiagnosticsCollapsed(false);
+  // Position bubble after layout is complete
+  requestAnimationFrame(updateSliderBubble);
 }
 
 init();
