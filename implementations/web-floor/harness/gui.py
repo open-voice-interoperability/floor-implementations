@@ -14,8 +14,10 @@ from tkinter import filedialog, messagebox, ttk
 
 from .cli import (
     EVENT_CHOICES,
+    build_grant_floor_payload,
     build_payload,
     classify_received,
+    http_post_json,
     send_one,
 )
 
@@ -98,6 +100,11 @@ class OFPTestHarnessApp:
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self.root)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Exit", command=self.root.destroy)
+        menubar.add_cascade(label="File", menu=file_menu)
+
         view_menu = tk.Menu(menubar, tearoff=0)
         view_menu.add_radiobutton(label="Zoom 100%", variable=self.zoom_var, value=100, command=lambda: self._apply_zoom(100))
         view_menu.add_radiobutton(label="Zoom 150%", variable=self.zoom_var, value=150, command=lambda: self._apply_zoom(150))
@@ -264,8 +271,9 @@ class OFPTestHarnessApp:
         ttk.Entry(event_frame, textvariable=self.expected_var).grid(row=5, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
 
         ttk.Label(event_frame, text="Timeout ms").grid(row=6, column=0, sticky="w", pady=(8, 0))
-        self.timeout_var = tk.IntVar(value=10000)
-        ttk.Spinbox(event_frame, from_=100, to=120000, increment=100, textvariable=self.timeout_var, width=12).grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+        # LLM-backed agents often exceed 10s; start at 60s by default.
+        self.timeout_var = tk.IntVar(value=60000)
+        ttk.Spinbox(event_frame, from_=100, to=600000, increment=100, textvariable=self.timeout_var, width=12).grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
 
         action_frame = ttk.Frame(parent)
         action_frame.grid(row=row, column=0, sticky="ew", pady=(10, 0))
@@ -405,13 +413,11 @@ class OFPTestHarnessApp:
         detail_frame.rowconfigure(0, weight=1)
         detail_frame.columnconfigure(0, weight=1)
 
-        self.detail_text = tk.Text(detail_frame, wrap="none")
+        self.detail_text = tk.Text(detail_frame, wrap="char")
         self.detail_text.grid(row=0, column=0, sticky="nsew")
         detail_v_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.detail_text.yview)
         detail_v_scroll.grid(row=0, column=1, sticky="ns")
-        detail_h_scroll = ttk.Scrollbar(detail_frame, orient="horizontal", command=self.detail_text.xview)
-        detail_h_scroll.grid(row=1, column=0, sticky="ew")
-        self.detail_text.configure(yscrollcommand=detail_v_scroll.set, xscrollcommand=detail_h_scroll.set)
+        self.detail_text.configure(yscrollcommand=detail_v_scroll.set)
 
         status_frame = ttk.Frame(parent)
         status_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -988,7 +994,7 @@ class OFPTestHarnessApp:
         utterance = self.utterance_var.get().strip()
         repeat = max(1, int(self.repeat_var.get() or 1))
         expected = self.expected_var.get().strip()
-        timeout_ms = max(100, int(self.timeout_var.get() or 10000))
+        timeout_ms = max(100, int(self.timeout_var.get() or 60000))
 
         if event_type not in EVENT_CHOICES:
             messagebox.showerror("Validation", "Please select a valid event type.")
@@ -1050,6 +1056,17 @@ class OFPTestHarnessApp:
 
         for agent_url, agent_name in targets:
             for utterance in utterances:
+                if event_type == "utterance":
+                    grant_payload = build_grant_floor_payload(
+                        agent_url,
+                        "openFloor://ofp-test-gui",
+                        "gui://ofp-test-harness",
+                    )
+                    try:
+                        http_post_json(agent_url, grant_payload, 5000)
+                    except Exception:
+                        pass
+
                 for _ in range(repeat):
                     if self._cancel_requested:
                         self.root.after(0, self._finish_run, success_count, fail_count, error_count, completed, total, True)
@@ -1074,7 +1091,7 @@ class OFPTestHarnessApp:
                         ok = False
                         status_code = None
                         error = str(exc)
-                        response = None
+                        response = {"error": error, "error_type": type(exc).__name__}
 
                     duration_ms = int((time.perf_counter() - started) * 1000)
                     response_text = json.dumps(response, ensure_ascii=False) if not isinstance(response, str) else response

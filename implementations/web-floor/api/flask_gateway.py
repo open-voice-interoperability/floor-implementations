@@ -11,7 +11,9 @@ entrypoint (index.py); app.py is a thin compatibility shim over it.
 import json
 import mimetypes
 import os
+import queue
 import sys
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -306,7 +308,15 @@ def _deliver_via_http(target_url: str, envelope: dict, timeout: float) -> list:
     to actually reach a conversant's serviceUrl. Mirrors /api/proxy-send's
     request-building and SSRF allowlist, but returns the parsed list of
     reply events directly instead of a wrapped proxy response, since this
-    is called internally by floor_router's routing loop, not by a browser."""
+    is called internally by floor_router's routing loop, not by a browser.
+
+    Connection-level failures (refused, reset, timed out) are intentionally
+    NOT swallowed here -- they propagate to floor_router.py's delivery
+    layer (deliver_and_collect/_deliver_with_retry), which is what decides
+    whether to retry and logs the failure. Swallowing them here made every
+    agent failure silent and indistinguishable from "the agent legitimately
+    said nothing at all", which is exactly what made a real agent crash
+    mid-conversation invisible in the floor manager's own logs."""
     allowed, _reason = _is_allowed_target(target_url)
     if not allowed:
         return []
@@ -321,11 +331,8 @@ def _deliver_via_http(target_url: str, envelope: dict, timeout: float) -> list:
             "User-Agent": "web-floor-flask-gateway/0.1",
         },
     )
-    try:
-        with urlopen(outbound, timeout=timeout) as response:
-            raw_text = response.read().decode("utf-8", errors="replace")
-    except (HTTPError, URLError, Exception):
-        return []
+    with urlopen(outbound, timeout=timeout) as response:
+        raw_text = response.read().decode("utf-8", errors="replace")
     try:
         parsed = json.loads(raw_text)
     except json.JSONDecodeError:
@@ -384,14 +391,16 @@ def floor_stream_options():
 
 @app.route("/api/floor/stream", methods=["POST"])
 def floor_stream():
-    # NDJSON counterpart to /api/floor/send. Phase 1 note: this runs the
-    # full exchange synchronously and yields one aggregated envelope --
-    # true per-turn incremental flushing (matching the old
-    # /round-robin-stream's one-line-per-turn behavior) needs a
-    # generator-based floor_router.process_envelope, which lands with the
-    # round-robin decision loop in Phase 3. Kept as a real NDJSON response
-    # now (not a stub) so app.js's cutover in Phase 4 doesn't need to
-    # distinguish "streaming not implemented yet" as a separate case.
+    # NDJSON counterpart to /api/floor/send, now genuinely incremental:
+    # process_envelope runs on a background thread while this generator
+    # drains a live queue, so both a conversant's real working/idle
+    # transition (on_progress) AND each finalized event -- most
+    # importantly, an utterance the moment that reply is ready -- (on_event)
+    # reach the client as they happen, not batched into one aggregated
+    # envelope only once the whole exchange (which can run minutes for a
+    # big full-sweep round) has finished. Line shapes: zero or more
+    # {"progress": {...}} and {"event": {...}} lines, interleaved in the
+    # order they actually occurred, followed by one {"done": true} line.
     body = request.get_json(silent=True) or {}
     payload = body.get("payload") or {}
     timeout_seconds = _effective_timeout_seconds(body.get("timeoutMs", 10000), payload)
@@ -399,9 +408,32 @@ def floor_stream():
 
     def generate():
         conv = floor_registry.get_or_create(conv_id)
-        with conv.lock:
-            executed = floor_router.process_envelope(conv, payload, FLOOR_MANAGER_IDENTITY, _deliver_via_http, timeout_seconds)
-        yield (json.dumps(_build_response_envelope(conv_id, executed)) + "\n").encode("utf-8")
+        live_queue = queue.Queue()
+
+        def on_progress(speaker_uri, service_url, status):
+            live_queue.put({"progress": {"speakerUri": speaker_uri, "serviceUrl": service_url, "status": status}})
+
+        def on_event(event):
+            live_queue.put({"event": event})
+
+        def run():
+            try:
+                with conv.lock:
+                    floor_router.process_envelope(
+                        conv, payload, FLOOR_MANAGER_IDENTITY, _deliver_via_http, timeout_seconds, on_progress, on_event
+                    )
+            finally:
+                live_queue.put(None)  # sentinel: processing finished, no more lines
+
+        threading.Thread(target=run, daemon=True).start()
+
+        while True:
+            item = live_queue.get()
+            if item is None:
+                break
+            yield (json.dumps(item) + "\n").encode("utf-8")
+
+        yield (json.dumps({"done": True}) + "\n").encode("utf-8")
 
     return Response(stream_with_context(generate()), mimetype="application/x-ndjson")
 

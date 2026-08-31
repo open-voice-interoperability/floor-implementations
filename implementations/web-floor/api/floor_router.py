@@ -15,10 +15,13 @@ every event takes the "no convener" column, which this module also fully
 implements -- so no rewrite is needed when Phase 2 lands.
 """
 
+import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from floor_state import ConversationState, normalize_id
+
+logger = logging.getLogger(__name__)
 
 UTTERANCE = "utterance"
 INVITE = "invite"
@@ -141,13 +144,24 @@ def _extract_dialog_feature_value(event: dict, feature_name: str) -> str:
 def resolve_pass_through_targets(conv: ConversationState, event: dict, sender_speaker_uri: str) -> list:
     """Conversants (ConversantState) this event should be delivered to,
     honoring the utterance `to.private` narrowing. Never includes the
-    sender itself. For a public (non-private) broadcast, also never
-    includes the registered convener -- the convener always gets its own
-    separate, richer delivery (delegation or courtesy-copy, carrying the
-    conversant roster and round context), never the plain broadcast copy,
-    so it's never called twice for the same event."""
+    sender itself.
+
+    An UTTERANCE also never includes the registered convener in this plain
+    broadcast -- convener gets its own separate, richer delivery instead
+    (delegation or courtesy-copy, carrying the conversant roster and round
+    context), so it's never called twice for the same utterance.
+
+    Every OTHER Pass-Through-Always event type (acceptInvite,
+    declineInvite, bye, getManifests, publishManifests, yieldFloor) has no
+    such alternate delivery to convener, so convener is NOT excluded for
+    those -- it's just another conversant on the broadcast, per the spec's
+    own Pass-Through semantics. Excluding it there silently meant convener
+    could never learn a specialist it had asked to be invited actually
+    accepted (confirmed live: acceptInvite from a newly invited specialist
+    never reached the convener that requested the invite at all)."""
     to = _event_to(event)
-    if event.get("eventType") == UTTERANCE and _is_private(event):
+    event_type = event.get("eventType")
+    if event_type == UTTERANCE and _is_private(event):
         target_speaker = _to_speaker_uri(to)
         target_service = _to_service_url(to)
         if target_speaker:
@@ -160,7 +174,8 @@ def resolve_pass_through_targets(conv: ConversationState, event: dict, sender_sp
                 return [match]
         return []
     sender_normalized = normalize_id(sender_speaker_uri)
-    convener_normalized = normalize_id(conv.convener_speaker_uri) if conv.convener_speaker_uri else None
+    exclude_convener = event_type == UTTERANCE and conv.convener_speaker_uri
+    convener_normalized = normalize_id(conv.convener_speaker_uri) if exclude_convener else None
     return [
         c for c in conv.conversants.values()
         if normalize_id(c.speaker_uri) != sender_normalized and normalize_id(c.speaker_uri) != convener_normalized
@@ -178,26 +193,82 @@ def _build_outbound_envelope(floor_manager_identity: dict, conv_id: str, event: 
     }
 
 
-def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float) -> list:
+def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
     """Send `event` to one conversant's serviceUrl via the injected
     `deliver` callback; returns whatever event dicts it replied with (an
     empty list on failure -- delivery failures must never abort the round).
     Each reply is stamped with _ORIGIN_KEY: this call is a direct
     request/response against `conversant`, so any events it hands back
     unambiguously originated there, even though the reply itself carries
-    no sender/dialogEvent of its own (e.g. a bare acceptInvite)."""
+    no sender/dialogEvent of its own (e.g. a bare acceptInvite).
+
+    `on_progress(speaker_uri, service_url, status)` -- status "working" then
+    "idle" -- is an optional live progress hook, called around the actual
+    network call so a caller (e.g. flask_gateway.py's streaming endpoint)
+    can surface real per-conversant activity to a client. May be called from
+    a worker thread when reached via deliver_concurrently's thread pool, so
+    it must be safe to call concurrently (a thread-safe queue.put is)."""
     envelope = _build_outbound_envelope(floor_manager_identity, conv_id, event)
+    if on_progress:
+        on_progress(conversant.speaker_uri, conversant.service_url, "working")
     try:
-        events = deliver(conversant.service_url, envelope, timeout) or []
-    except Exception:
-        return []
+        events = _deliver_with_retry(conversant, envelope, deliver, timeout)
+    finally:
+        if on_progress:
+            on_progress(conversant.speaker_uri, conversant.service_url, "idle")
     for reply_event in events:
         if isinstance(reply_event, dict):
             reply_event[_ORIGIN_KEY] = conversant.speaker_uri
     return events
 
 
-def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float) -> list:
+def _is_timeout_error(error: Exception) -> bool:
+    """True for a genuine timeout, whether raised directly (TimeoutError /
+    socket.timeout, which is TimeoutError as of Python 3.10) or wrapped
+    inside another exception's .reason (urllib.error.URLError's shape for
+    a connect-phase timeout) -- checked via duck typing so this stays
+    transport-agnostic rather than importing a specific HTTP library."""
+    if isinstance(error, TimeoutError):
+        return True
+    return isinstance(getattr(error, "reason", None), TimeoutError)
+
+
+def _deliver_with_retry(conversant, envelope: dict, deliver, timeout: float) -> list:
+    """A single transient, FAST-failing delivery error (a dropped
+    connection, an agent process mid-restart) must not silently lose that
+    conversant's whole turn for the round -- confirmed live: an agent
+    crash mid-conversation looks exactly like "that conversant's results
+    just never showed up," with nothing in the floor manager's own logs to
+    explain why (delivery failures used to be swallowed with no logging at
+    all). One immediate retry, without backoff, rides out that kind of
+    momentary hiccup.
+
+    A genuine TIMEOUT is handled differently on purpose: the full `timeout`
+    has already been spent waiting once, so retrying would just spend it
+    again for no benefit -- give up immediately rather than doubling the
+    wait, and log that the agent was unavailable."""
+    try:
+        return deliver(conversant.service_url, envelope, timeout) or []
+    except Exception as first_error:
+        if _is_timeout_error(first_error):
+            logger.warning(
+                "Agent at %s is unavailable (timed out after %.0fs) -- giving up on this turn",
+                conversant.service_url, timeout,
+            )
+            return []
+        logger.warning("Delivery to %s failed (%s), retrying once", conversant.service_url, first_error)
+
+    try:
+        return deliver(conversant.service_url, envelope, timeout) or []
+    except Exception as second_error:
+        logger.warning(
+            "Agent at %s is unavailable (failed again after retry: %s) -- giving up on this turn",
+            conversant.service_url, second_error,
+        )
+        return []
+
+
+def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
     """Deliver `event` to every target concurrently (they're independent
     recipients of the same one event -- the spec's normative
     sequential-processing rule governs the EVENT QUEUE, not fan-out to
@@ -207,10 +278,10 @@ def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dic
     if not targets:
         return []
     if len(targets) == 1:
-        return deliver_and_collect(targets[0], event, floor_manager_identity, conv_id, deliver, timeout)
+        return deliver_and_collect(targets[0], event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
     with ThreadPoolExecutor(max_workers=min(MAX_CONCURRENT_DELIVERIES, len(targets))) as pool:
         futures = [
-            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv_id, deliver, timeout)
+            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
             for target in targets
         ]
         results = [f.result() for f in futures]
@@ -274,14 +345,30 @@ def apply_local_state(conv: ConversationState, event: dict, sender_speaker_uri: 
 _TRUSTED_KEY = "_floorManagerTrusted"
 
 
-def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_identity: dict, deliver, timeout: float = 30.0) -> list:
+def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_identity: dict, deliver, timeout: float = 30.0, on_progress=None, on_event=None) -> list:
     """Process every event in in_envelope's "openFloor.events" list per the
     routing table, returning the ordered list of events the caller (browser
-    or convener) should be shown/rendered."""
+    or convener) should be shown/rendered.
+
+    `on_progress(speaker_uri, service_url, status)` is an optional live
+    progress hook (see deliver_and_collect) threaded through to every
+    delivery call this makes, so a streaming caller can surface real-time
+    per-conversant activity instead of only a final aggregated result.
+
+    `on_event(event)` is an optional hook called the moment an event is
+    finalized into `executed` -- e.g. the instant one specialist's reply is
+    ready, not after the whole round (which can take minutes across many
+    conversants) finishes. A streaming caller uses this to show each
+    response as it arrives instead of batching everything until the end."""
     openfloor = _unwrap_envelope(in_envelope)
     raw_events = openfloor.get("events") or []
     queue = deque(raw_events)
     executed = []
+
+    def finalize(event: dict) -> None:
+        executed.append(event)
+        if on_event:
+            on_event(event)
 
     while queue:
         event = queue.popleft()
@@ -297,7 +384,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
         if event_type == UTTERANCE:
             if not trusted and not sender_currently_holds_floor(conv, sender_speaker_uri):
                 if conv.convener_speaker_uri:
-                    convener_events = delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout)
+                    convener_events = delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
                     queue.extendleft(reversed(convener_events))
                 # else: Ignore, per table.
                 continue
@@ -322,20 +409,60 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             elif not is_convener_sender:
                 conv.record_turn(sender_speaker_uri, sender_conversant.conversational_name, _extract_utterance_text(event))
 
+            # Cap each specialist to one comment per turn so peer-to-peer
+            # cross-talk can't cascade: the moment a specialist's own reply
+            # is about to be broadcast to its peers (Pass-Through, below),
+            # close ITS OWN local floor gate first via a real, synchronously
+            # delivered revokeFloor -- so by the time any peer's reply comes
+            # back around, this conversant no longer holds the floor and
+            # won't be re-triggered. Skipped for exactly 2 non-convener
+            # conversants, so a pair of specialists can freely converse.
+            #
+            # The revokeFloor is delivered/applied here (early), but NOT
+            # finalized yet -- finalize it AFTER this specialist's own
+            # utterance below instead. A streaming caller finalizes/shows
+            # events in the order it receives them, and a client-side
+            # "don't show an utterance from an already-revoked speaker"
+            # guard (a real one exists in web-floor's app.js, for a
+            # DIFFERENT, legitimate case: a stale/late reply arriving after
+            # that speaker was revoked for some other reason) would
+            # otherwise see this specialist as already revoked by the time
+            # its own triggering utterance arrives, and wrongly suppress it
+            # -- confirmed live: this made every >2-specialist reply vanish
+            # from the conversation history while still showing in the raw
+            # event log.
+            pending_self_revoke = None
+            if not is_convener_sender and sender_conversant is not None:
+                other_conversants = [
+                    c for c in conv.conversants.values()
+                    if not (conv.convener_speaker_uri and normalize_id(c.speaker_uri) == normalize_id(conv.convener_speaker_uri))
+                ]
+                if len(other_conversants) > 2 and sender_conversant.floor_granted:
+                    revoke_event = {
+                        "eventType": REVOKE_FLOOR,
+                        "to": {"speakerUri": sender_conversant.speaker_uri, "serviceUrl": sender_conversant.service_url},
+                    }
+                    revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                    apply_local_state(conv, revoke_event, sender_speaker_uri)
+                    pending_self_revoke = revoke_event
+                    queue.extend(revoke_replies)
+
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout)
-            # NOT executed.extend(reply_events) here -- each reply re-enters
-            # the SAME table (queue.extend below) and gets appended to
-            # `executed` exactly once, when ITS OWN turn through the loop
-            # reaches the "executed.append(event)" below. Adding it here too
-            # would double-report every specialist reply.
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            # NOT finalize()-ing reply_events here -- each reply re-enters
+            # the SAME table (queue.extend below) and gets finalized exactly
+            # once, when ITS OWN turn through the loop reaches the
+            # "finalize(event)" below. Finalizing it here too would
+            # double-report every specialist reply.
             queue.extend(reply_events)  # each reply re-enters the SAME table, at the tail
 
             if not trusted and conv.convener_speaker_uri:
-                courtesy_events = deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout)
+                courtesy_events = deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
                 queue.extendleft(reversed(courtesy_events))
 
-            executed.append(event)
+            finalize(event)
+            if pending_self_revoke is not None:
+                finalize(pending_self_revoke)
             continue
 
         if event_type in DELEGATABLE_CONTROL:
@@ -353,7 +480,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # answer anyway, so this always executes directly instead.
             target_is_convener = _event_targets_convener(conv, event)
             if not trusted and conv.convener_speaker_uri and not target_is_convener:
-                convener_events = delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout)
+                convener_events = delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
                 queue.extendleft(reversed(convener_events))
                 continue
 
@@ -379,7 +506,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                 target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
                 extra = apply_local_state(conv, resolved, sender_speaker_uri)
 
-            executed.append(resolved)
+            finalize(resolved)
 
             # Pass-Through: the resolved event must actually reach its target
             # conversant -- apply_local_state above only updates the floor
@@ -387,12 +514,12 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # own local floor gate (e.g. base_strategy_agent.py's
             # _floor_granted), which is the real point of grantFloor/revokeFloor.
             if target is not None:
-                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv.conv_id, deliver, timeout)
-                # NOT executed.extend(reply_events) -- same reasoning as the
+                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                # NOT finalize()-ing reply_events -- same reasoning as the
                 # utterance branch above: each reply (e.g. an acceptInvite in
                 # response to this invite) re-enters the table via
-                # queue.extend and gets appended to `executed` exactly once
-                # when its own turn through the loop is processed.
+                # queue.extend and gets finalized exactly once when its own
+                # turn through the loop is processed.
                 queue.extend(reply_events)
 
             queue.extend(extra)
@@ -400,18 +527,19 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
 
         if event_type in PASS_THROUGH_ALWAYS:
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout)
-            executed.extend(reply_events)
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            for reply_event in reply_events:
+                finalize(reply_event)
             apply_local_state(conv, event, sender_speaker_uri)
             if event_type == ACCEPT_INVITE and not conv.convener_speaker_uri:
                 accepting_conversant = conv.get_conversant(sender_speaker_uri)
                 if accepting_conversant is not None:
                     detect_convener_role(conv, accepting_conversant, floor_manager_identity, deliver, timeout)
-            executed.append(event)
+            finalize(event)
             continue
 
         # Unknown event type: report it unchanged, do nothing else.
-        executed.append(event)
+        finalize(event)
 
     return executed
 
@@ -442,15 +570,15 @@ def detect_convener_role(conv: ConversationState, conversant, floor_manager_iden
     return False
 
 
-def delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout):
-    return _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout)
+def delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress=None):
+    return _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
 
 
-def deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout):
-    return _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout)
+def deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress=None):
+    return _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
 
 
-def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout):
+def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress=None):
     convener = conv.convener
     if convener is None:
         return []
@@ -473,7 +601,12 @@ def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deli
         }
         for c in conv.conversants.values()
     ]
-    openfloor["conversation"]["floorGranted"] = [c.service_url for c in conv.conversants.values() if c.floor_granted]
+    # Spec section 1.6: floorGranted is "an array of speakerURIs", not
+    # serviceUrls -- speakerUri and serviceUrl happen to be identical for
+    # every agent in this project's own examples, which is what let this
+    # go unnoticed; a genuinely spec-compliant participant (or this
+    # project's own tag:-URI manifest fallback) would have them differ.
+    openfloor["conversation"]["floorGranted"] = [c.speaker_uri for c in conv.conversants.values() if c.floor_granted]
     openfloor["events"][0] = {
         **event,
         "parameters": {
@@ -485,10 +618,13 @@ def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deli
             "roundMaxWords": conv.round_max_words,
         },
     }
+    if on_progress:
+        on_progress(convener.speaker_uri, convener.service_url, "working")
     try:
-        returned_events = deliver(convener.service_url, envelope, timeout) or []
-    except Exception:
-        return []
+        returned_events = _deliver_with_retry(convener, envelope, deliver, timeout)
+    finally:
+        if on_progress:
+            on_progress(convener.speaker_uri, convener.service_url, "idle")
     # Trust whatever convener sends back -- it's privileged, per the spec's
     # own wording ("the convener is then responsible for returning this
     # event back to the floor manager OR substituting it with different

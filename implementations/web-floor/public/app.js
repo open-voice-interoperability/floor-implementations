@@ -63,6 +63,14 @@ const KNOWN_AGENTS = [
   { url: "http://127.0.0.1:8208/", conversationalName: "Technical Feasibility" },
   { url: "http://127.0.0.1:8206/", conversationalName: "Devil's Advocate" },
   { url: "http://127.0.0.1:8207/", conversationalName: "Strategy Synthesizer" },
+  { url: "http://127.0.0.1:8300/", conversationalName: "Cafeteria Ops Convener" },
+  { url: "http://127.0.0.1:8301/", conversationalName: "Menu Designer" },
+  { url: "http://127.0.0.1:8302/", conversationalName: "Nutrition Specialist" },
+  { url: "http://127.0.0.1:8303/", conversationalName: "Recipe & Portion Specialist" },
+  { url: "http://127.0.0.1:8304/", conversationalName: "Menu Optimization Specialist" },
+  { url: "http://127.0.0.1:8305/", conversationalName: "Inventory Specialist" },
+  { url: "http://127.0.0.1:8306/", conversationalName: "Procurement Specialist" },
+  { url: "http://127.0.0.1:8310/", conversationalName: "Shopping List Specialist" },
   { url: "https://bladeszasza-ofpbadword.hf.space/ofp", conversationalName: "" },
   { url: "https://yahandhjjf.us-east-1.awsapprunner.com/", conversationalName: "" }
 ];
@@ -1448,7 +1456,14 @@ function buildAndQueueCombinedReport(htmlReportEntries) {
   const esc = s => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const sections = htmlReportEntries.map(entry => {
     const nameHtml = `<h2 style="font-family:sans-serif;margin:0 0 8px;font-size:1.1rem;color:#1a1a1a;border-bottom:2px solid #2196F3;padding-bottom:4px">${esc(entry.name)}</h2>`;
-    const textHtml = entry.text
+    // entry.html, when present, is already a full rendering of entry.text
+    // (a real <ul><li> list, an image-illustrated <p>, or a chart) -- showing
+    // the raw text again alongside it just duplicates the same content, and
+    // since a <p> collapses entry.text's own newlines, that duplicate shows
+    // up as a flattened one-line run-on right above the properly formatted
+    // version. Only fall back to the plain-text paragraph when there's no
+    // html rendering of it to show instead.
+    const textHtml = entry.text && !entry.html
       ? `<p style="font-family:sans-serif;margin:0 0 12px;font-size:0.9rem;color:#333;line-height:1.5">${esc(entry.text)}</p>`
       : "";
     return `<section style="margin-bottom:28px">${nameHtml}${textHtml}${entry.html}</section>`;
@@ -1825,25 +1840,42 @@ async function sendEvents(eventTypes) {
   }
 
   const floorManagerId = gatewayPath("/");
-  const isRoundRobinUtterance = eventTypes.includes("utterance") && responsePattern === "round_robin";
 
-  try {
-    if (isRoundRobinUtterance) {
-      // Each turn arrives as its own envelope, so accumulate report entries
-      // across all of them and build the combined "Full Analysis Report"
-      // popup once at the end.
-      const reportEntries = [];
-      await floorStream(payload, timeoutMs, (envelope) => {
-        processIncomingEnvelope(envelope, floorManagerId, { reportEntries, buildReport: false });
+  // Every utterance round now goes through the streaming endpoint (not just
+  // round-robin): floor_router.py reports both each conversant's real
+  // working/idle transition (on_progress) AND each finalized event the
+  // MOMENT it's ready (on_event) -- most importantly, an utterance as soon
+  // as that one reply arrives, not batched until the whole round (which
+  // can take minutes for a big full-sweep) finishes. Accumulate report
+  // entries across the whole stream (mirrors the old round-robin-only
+  // path) so the combined report popup still covers every response, built
+  // once the stream ends rather than per event.
+  if (eventTypes.includes("utterance")) {
+    const reportEntries = [];
+    try {
+      await floorStream(payload, timeoutMs, (line) => {
+        if (line?.progress) {
+          const { serviceUrl, speakerUri, status } = line.progress;
+          setAgentStatus(serviceUrl || speakerUri, status);
+          return;
+        }
+        if (line?.event) {
+          processIncomingEnvelope({ openFloor: { events: [line.event] } }, floorManagerId, { reportEntries, buildReport: false });
+        }
       });
       buildAndQueueCombinedReport(reportEntries);
+    } catch (error) {
+      logError("Floor manager request failed", String(error));
+    }
+    return;
+  }
+
+  try {
+    const response = await floorSend(payload, timeoutMs);
+    if (response?.openFloor) {
+      processIncomingEnvelope(response, floorManagerId);
     } else {
-      const response = await floorSend(payload, timeoutMs);
-      if (response?.openFloor) {
-        processIncomingEnvelope(response, floorManagerId);
-      } else {
-        logError("Non-JSON response from floor manager", response);
-      }
+      logError("Non-JSON response from floor manager", response);
     }
   } catch (error) {
     logError("Floor manager request failed", String(error));

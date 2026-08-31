@@ -10,20 +10,18 @@ The normal workflow is GUI-first:
 
 ## 1. Prerequisites
 
-- Python environment for implementations/web-floor
-- Dependencies for web-floor installed
+- Python with Tkinter available
 - Optional chart dependencies installed if you want popup charts
 
-From implementations/web-floor:
+Optional chart packages:
 
 ```bash
-python -m pip install -r requirements.txt
 python -m pip install seaborn pandas matplotlib
 ```
 
 ## 2. Launch The Harness
 
-From implementations/web-floor:
+From the `implementations/web-floor` folder:
 
 ```bash
 python ofp_test.py
@@ -165,7 +163,6 @@ No manifest returned:
 - Verify correct target URL, including any required path suffix.
 - Example local Verity URL is http://localhost:8768/verity/.
 - Confirm agent process is running and listening on the expected port.
-- For gateway mode, verify Flask gateway is running and gateway URL is correct.
 
 All results are error:
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# NOTE: flask_gateway.py is the canonical gateway used by the Vercel entrypoint
+# (index.py). Keep this file's proxy logic in sync with it, or prefer importing
+# from flask_gateway directly.
 import json
 import mimetypes
 import os
@@ -7,7 +10,6 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 
 # Fix Windows registry often mapping .js to text/plain
 mimetypes.add_type("application/javascript", ".js")
@@ -18,27 +20,44 @@ PUBLIC_DIR = BASE_DIR.parent / "public"
 
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
 
-# Read allowed origins from environment variable (comma-separated)
-allowed_origins = os.environ.get("ALLOWED_ORIGINS", "").split(",")
-
-# Remove empty strings and strip whitespace
-allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
-
-# Apply CORS
-CORS(app, origins=allowed_origins)
-
 def _parse_csv_env(value: str) -> list[str]:
 	return [item.strip() for item in (value or "").split(",") if item.strip()]
 
 CORS_ORIGINS = _parse_csv_env(os.environ.get("CORS_ALLOW_ORIGINS", "*")) or ["*"]
 TARGET_ALLOWLIST = _parse_csv_env(os.environ.get("GATEWAY_TARGET_ALLOWLIST", ""))
 
+MAX_PROXY_TIMEOUT_SECONDS = 240.0
+MIN_UTTERANCE_TIMEOUT_SECONDS = 180.0
+
 def _normalize_timeout_seconds(timeout_ms) -> float:
 	try:
 		timeout = float(timeout_ms) / 1000.0
 	except (TypeError, ValueError):
 		timeout = 10.0
-	return max(0.1, min(timeout, 60.0))
+	return max(0.1, min(timeout, MAX_PROXY_TIMEOUT_SECONDS))
+
+
+def _contains_utterance_event(payload: object) -> bool:
+	if not isinstance(payload, dict):
+		return False
+	envelope = payload.get("openFloor") or payload.get("openfloor") or payload.get("ovon") or payload
+	if not isinstance(envelope, dict):
+		return False
+	events = envelope.get("events")
+	if not isinstance(events, list):
+		return False
+	for event in events:
+		if isinstance(event, dict) and event.get("eventType") == "utterance":
+			return True
+	return False
+
+
+def _effective_timeout_seconds(timeout_ms, payload: object) -> float:
+	timeout = _normalize_timeout_seconds(timeout_ms)
+	# Strategy convener fan-out can exceed 2 minutes under load.
+	if _contains_utterance_event(payload):
+		return max(timeout, MIN_UTTERANCE_TIMEOUT_SECONDS)
+	return timeout
 
 def _is_allowed_target(target_url: str) -> tuple[bool, str]:
 	parsed = urlparse(target_url)
@@ -69,7 +88,9 @@ def proxy_send():
 	body = request.get_json(silent=True) or {}
 	target_url = body.get("targetUrl")
 	payload = body.get("payload") or {}
-	timeout_seconds = _normalize_timeout_seconds(body.get("timeoutMs", 10000))
+	# Let _effective_timeout_seconds decide: control events use the caller's
+	# timeout; only utterance events are raised to the long fan-out floor.
+	timeout_seconds = _effective_timeout_seconds(body.get("timeoutMs", 10000), payload)
 	if not isinstance(target_url, str) or not target_url.strip():
 		return jsonify({"error": "targetUrl is required"}), 400
 	target_url = target_url.strip()
@@ -103,8 +124,6 @@ def health():
 
 @app.route("/", methods=["GET"])
 def index():
-	index_path = (PUBLIC_DIR / "index.html").resolve()
-	print(f"[DEBUG] index.html resolved path: {index_path}")
 	response = send_from_directory(PUBLIC_DIR, "index.html")
 	response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
 	response.headers["Pragma"] = "no-cache"
@@ -122,14 +141,3 @@ def serve_static(asset_path: str):
 	response.headers["Expires"] = "0"
 	return response
 
-@app.route("/debug-files", methods=["GET"])
-def debug_files():
-	files = []
-	try:
-		for root, dirs, filenames in os.walk(PUBLIC_DIR):
-			for filename in filenames:
-				rel_path = os.path.relpath(os.path.join(root, filename), PUBLIC_DIR)
-				files.append(rel_path)
-	except Exception as e:
-		return jsonify({"error": str(e)}), 500
-	return jsonify({"files": files})

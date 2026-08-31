@@ -11,5 +11,15 @@
   {"url": "http://localhost:8084/", "conversationalName": "Prudence"},
   {"url": "http://localhost:8085/", "conversationalName": "Lucky"},
   {"url": "https://bladeszasza-ofpbadword.hf.space/ofp", "conversationalName": ""},
-  {"url": "https://yahandhjjf.us-east-1.awsapprunner.com/", "conversationalName": ""}
+  {"url": "https://yahandhjjf.us-east-1.awsapprunner.com/", "conversationalName": ""},
+  {"url": "http://localhost:8199/", "conversationalName": "Convener (Strategy)"},
+  {"url": "http://localhost:8200/", "conversationalName": "Market Validator"},
+  {"url": "http://localhost:8201/", "conversationalName": "Competitive Intelligence"},
+  {"url": "http://localhost:8202/", "conversationalName": "Business Model Designer"},
+  {"url": "http://localhost:8203/", "conversationalName": "Risk Identifier"},
+  {"url": "http://localhost:8204/", "conversationalName": "Funding Strategist"},
+  {"url": "http://localhost:8205/", "conversationalName": "Workforce Strategist"},
+  {"url": "http://localhost:8208/", "conversationalName": "Technical Feasibility"},
+  {"url": "http://localhost:8206/", "conversationalName": "Devil's Advocate"},
+  {"url": "http://localhost:8207/", "conversationalName": "Strategy Synthesizer"}
 ]
