@@ -471,6 +471,281 @@ class ConvenerPresentTests(unittest.TestCase):
         self.assertIn("tag:market", second_call_params["roundTurnOrder"])
         self.assertEqual(second_call_params["roundQuestion"], "what about risk?")
 
+    def test_accept_invite_from_a_newly_invited_specialist_reaches_the_convener(self):
+        # acceptInvite has no courtesy-copy mechanism of its own (unlike
+        # utterance) -- it's Pass-Through-Always, and convener is just
+        # another conversant on that broadcast, so it must NOT be excluded
+        # here the way it is for utterance. Otherwise convener never learns
+        # that a specialist it asked to be invited actually accepted.
+        invite_event = {"eventType": "invite", "to": {"speakerUri": "tag:funding", "serviceUrl": "http://localhost:8204/"}}
+        calls = []
+
+        def deliver(target_url, sent_envelope, timeout):
+            calls.append((target_url, sent_envelope))
+            if target_url == "http://localhost:8199/":
+                # Convener is registered, so the invite itself is delegated
+                # to it first (per DELEGATABLE_CONTROL) -- approve it as-is
+                # exactly once so it actually gets executed and delivered
+                # to the invitee; convener has nothing further to add to
+                # anything else it's asked about (the later revokeFloor
+                # delegation, or this same acceptInvite broadcast).
+                sent_event = sent_envelope["openFloor"]["events"][0]
+                if sent_event.get("eventType") == "invite":
+                    return [invite_event]
+                return []
+            if target_url == "http://localhost:8204/":
+                return [{"eventType": "acceptInvite"}]
+            return []
+
+        in_env = envelope("tag:human", [invite_event])
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        convener_calls = [c for c in calls if c[0] == "http://localhost:8199/"]
+        accept_invite_calls = [
+            c for c in convener_calls
+            if c[1]["openFloor"]["events"][0].get("eventType") == "acceptInvite"
+        ]
+        self.assertEqual(len(accept_invite_calls), 1)
+
+    def test_utterance_still_excludes_convener_from_the_plain_broadcast(self):
+        # Regression guard for the exclusion now being conditional on event
+        # type: utterance must still skip convener in resolve_pass_through_
+        # targets (it gets the richer courtesy-copy instead, see
+        # test_utterance_gets_courtesy_copied_to_convener) -- it must not
+        # ALSO receive the plain broadcast copy.
+        deliver = FakeDeliver()
+        in_env = envelope("tag:human", [utterance_event("evaluate this idea", "tag:human")])
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        broadcast_calls = [
+            c for c in deliver.calls
+            if c[0] == "http://localhost:8199/" and c[1]["openFloor"]["events"][0].get("eventType") == "utterance"
+            and "roundHistory" not in (c[1]["openFloor"]["events"][0].get("parameters") or {})
+        ]
+        self.assertEqual(broadcast_calls, [])
+
+
+class OnProgressTests(unittest.TestCase):
+    """on_progress is an optional live-status hook: every real delivery
+    call must report "working" immediately before and "idle" immediately
+    after, in matched pairs, so a streaming caller (flask_gateway.py) can
+    surface real per-conversant activity instead of only a final result."""
+
+    def setUp(self):
+        self.conv = ConversationState(conv_id="conv-1")
+        self.conv.add_conversant("tag:market", "http://localhost:8200/", "Market Validator")
+        self.conv.add_conversant("tag:skeptic", "http://localhost:8206/", "Devil's Advocate")
+
+    def _record_progress(self):
+        events = []
+        lock = threading.Lock()
+
+        def on_progress(speaker_uri, service_url, status):
+            with lock:
+                events.append((speaker_uri, service_url, status))
+
+        return events, on_progress
+
+    def test_pass_through_broadcast_reports_working_then_idle_per_target(self):
+        self.conv.get_conversant("tag:market").floor_granted = True
+        deliver = FakeDeliver()
+        events, on_progress = self._record_progress()
+        in_env = envelope("tag:market", [utterance_event("TAM is $1B", "tag:market")])
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver, on_progress=on_progress)
+
+        skeptic_events = [e for e in events if e[1] == "http://localhost:8206/"]
+        self.assertEqual(skeptic_events, [
+            ("tag:skeptic", "http://localhost:8206/", "working"),
+            ("tag:skeptic", "http://localhost:8206/", "idle"),
+        ])
+
+    def test_idle_is_reported_even_when_delivery_raises(self):
+        def raising_deliver(target_url, sent_envelope, timeout):
+            raise ConnectionError("agent unreachable")
+
+        events, on_progress = self._record_progress()
+        in_env = envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:newagent", "serviceUrl": "http://localhost:8299/"}},
+        ])
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, raising_deliver, on_progress=on_progress)
+
+        new_agent_events = [e for e in events if e[1] == "http://localhost:8299/"]
+        self.assertIn(("tag:newagent", "http://localhost:8299/", "idle"), new_agent_events)
+
+    def test_omitting_on_progress_does_not_break_processing(self):
+        deliver = FakeDeliver()
+        in_env = envelope("tag:human", [utterance_event("go", "tag:human")])
+
+        # No on_progress kwarg at all -- must behave exactly as before.
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        self.assertEqual(len(executed), 1)
+
+
+class DeliveryRetryTests(unittest.TestCase):
+    """A single transient delivery failure must not silently lose a
+    conversant's whole turn -- confirmed live: a momentary agent hiccup
+    made it look like a team member's results just never showed up, with
+    nothing logged to explain why."""
+
+    def setUp(self):
+        self.conv = ConversationState(conv_id="conv-1")
+        self.conv.add_conversant("tag:market", "http://localhost:8200/", "Market Validator")
+        self.conv.add_conversant("tag:skeptic", "http://localhost:8206/", "Devil's Advocate")
+        self.conv.get_conversant("tag:market").floor_granted = True
+
+    def test_transient_failure_then_success_is_retried_and_recovers(self):
+        calls = []
+
+        def flaky_deliver(target_url, sent_envelope, timeout):
+            calls.append(target_url)
+            if target_url == "http://localhost:8206/" and len(calls) == 1:
+                raise ConnectionError("connection reset")
+            return []
+
+        in_env = envelope("tag:market", [utterance_event("my analysis", "tag:market")])
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, flaky_deliver)
+
+        self.assertEqual(calls.count("http://localhost:8206/"), 2)
+
+    def test_persistent_failure_gives_up_after_one_retry(self):
+        calls = []
+
+        def always_fails(target_url, sent_envelope, timeout):
+            calls.append(target_url)
+            raise ConnectionError("connection reset")
+
+        in_env = envelope("tag:market", [utterance_event("my analysis", "tag:market")])
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, always_fails)
+
+        self.assertEqual(calls.count("http://localhost:8206/"), 2)
+        # Delivery failure must never abort the round -- the sender's own
+        # utterance is still reported executed even though the broadcast
+        # to skeptic ultimately failed.
+        self.assertEqual(len(executed), 1)
+
+    def test_timeout_gives_up_immediately_without_retrying(self):
+        # A timeout means the full `timeout` was already spent waiting once
+        # -- retrying would silently double that wait for no benefit, so a
+        # genuine timeout must NOT be retried (unlike a fast connection
+        # error, which is retried once).
+        calls = []
+
+        def always_times_out(target_url, sent_envelope, timeout):
+            calls.append(target_url)
+            raise TimeoutError("timed out")
+
+        in_env = envelope("tag:market", [utterance_event("my analysis", "tag:market")])
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, always_times_out)
+
+        self.assertEqual(calls.count("http://localhost:8206/"), 1)
+        self.assertEqual(len(executed), 1)
+
+    def test_wrapped_timeout_reason_is_still_detected_as_a_timeout(self):
+        # Mirrors urllib.error.URLError's shape for a connect-phase timeout:
+        # the TimeoutError is wrapped in another exception's .reason, not
+        # raised directly.
+        calls = []
+
+        class _WrappedTimeout(Exception):
+            def __init__(self):
+                super().__init__("wrapped timeout")
+                self.reason = TimeoutError("timed out")
+
+        def always_times_out(target_url, sent_envelope, timeout):
+            calls.append(target_url)
+            raise _WrappedTimeout()
+
+        in_env = envelope("tag:market", [utterance_event("my analysis", "tag:market")])
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, always_times_out)
+
+        self.assertEqual(calls.count("http://localhost:8206/"), 1)
+
+
+class OnEventTests(unittest.TestCase):
+    """on_event fires the moment each event is finalized into `executed`,
+    not after the whole round -- so a streaming caller can show each
+    conversant's response as it arrives instead of batching until the end."""
+
+    def setUp(self):
+        self.conv = ConversationState(conv_id="conv-1")
+        self.conv.add_conversant("tag:market", "http://localhost:8200/", "Market Validator")
+        self.conv.add_conversant("tag:skeptic", "http://localhost:8206/", "Devil's Advocate")
+
+    def test_on_event_receives_exactly_the_events_returned(self):
+        deliver = FakeDeliver(replies={
+            "http://localhost:8200/": [utterance_event("TAM is $1B", "tag:market")],
+        })
+        seen = []
+        in_env = envelope("tag:human", [utterance_event("go", "tag:human")])
+        self.conv.get_conversant("tag:market").floor_granted = True
+
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver, on_event=seen.append)
+
+        self.assertEqual(seen, executed)
+        self.assertEqual(len(seen), 2)  # the human's utterance, then market's reply
+
+    def test_self_revoke_is_finalized_after_its_own_triggering_utterance(self):
+        # With >2 non-convener conversants, a specialist's own reply
+        # triggers a synchronous self-revoke (see process_envelope) so
+        # cross-talk can't cascade. That revoke must not be finalized/
+        # streamed BEFORE the utterance that triggered it -- a streaming
+        # client (web-floor's app.js) finalizes/shows events in the order
+        # it receives them, and has a real "don't show an utterance from an
+        # already-revoked speaker" guard for a different, legitimate case (a
+        # stale reply arriving after that speaker was revoked for some
+        # other reason). If the revoke streamed first, that guard would
+        # wrongly suppress the very reply that caused it -- confirmed live:
+        # every >2-specialist reply vanished from conversation history
+        # while still showing in the raw event log.
+        self.conv.add_conversant("tag:funding", "http://localhost:8204/", "Funding Strategist")
+        self.conv.get_conversant("tag:market").floor_granted = True
+        deliver = FakeDeliver(replies={
+            "http://localhost:8200/": [utterance_event("TAM is $1B", "tag:market")],
+        })
+        in_env = envelope("tag:human", [utterance_event("go", "tag:human")])
+
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        market_utterance_index = next(
+            i for i, e in enumerate(executed)
+            if e.get("eventType") == "utterance"
+            and (e.get("parameters", {}).get("dialogEvent", {}) or {}).get("speakerUri") == "tag:market"
+        )
+        market_revoke_index = next(
+            i for i, e in enumerate(executed)
+            if e.get("eventType") == "revokeFloor" and e.get("to", {}).get("speakerUri") == "tag:market"
+        )
+        self.assertLess(market_utterance_index, market_revoke_index)
+
+    def test_on_event_fires_per_event_not_only_at_the_end(self):
+        # Regardless of how many conversants ultimately answer, each
+        # finalized event must be observable as its own callback -- this is
+        # what lets a streaming caller render responses incrementally.
+        self.conv.add_conversant("tag:funding", "http://localhost:8204/", "Funding Strategist")
+        deliver = FakeDeliver()
+        call_order = []
+
+        def on_event(event):
+            call_order.append(event.get("eventType"))
+
+        in_env = envelope("tag:human", [utterance_event("go", "tag:human")])
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver, on_event=on_event)
+
+        self.assertEqual(call_order, ["utterance"])
+
+    def test_omitting_on_event_does_not_break_processing(self):
+        deliver = FakeDeliver()
+        in_env = envelope("tag:human", [utterance_event("go", "tag:human")])
+
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        self.assertEqual(len(executed), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

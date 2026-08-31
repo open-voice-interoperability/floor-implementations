@@ -1,7 +1,21 @@
 /implementations/assistantClient/openfloor
-implementations/web-floor/__pycache__/flask_gateway.cpython-311.pyc
 
+# Python bytecode / caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor / workspace
 .vercel
+*.code-workspace
+
+# Local scratch: prompt drafts, transcripts, harness run output
+implementations/web-floor/convener.txt
+implementations/web-floor/convenerPrompt.txt
+implementations/web-floor/financialDemo.txt
+implementations/web-floor/mermaid-test.md
+implementations/web-floor/harness/results*.json
+implementations/web-floor/harness/load_agents_startup_strategy.json
 implementations/assistantClient/assistantClientSpeech.py
 implementations/assistantClient/assistantClient-Pegasus.py
 implementations/assistantClient/assistantClient-Pegasus.py

@@ -15,7 +15,7 @@ conversant/floor state for the conversation and decides where each event
 actually goes.
 
 ```mermaid
-flowchart LR
+graph LR
   U[User in Browser]
 
   subgraph B[Browser Client]
@@ -103,7 +103,7 @@ implementation: a stateless single-target relay with no floor/conversant
 tracking, for manually poking one agent directly from the UI.
 
 ```mermaid
-flowchart LR
+graph LR
   U[User in Browser]
 
   subgraph B[web-floor Browser Client]

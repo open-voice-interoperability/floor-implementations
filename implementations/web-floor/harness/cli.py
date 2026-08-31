@@ -96,6 +96,17 @@ def pick_targets(args: argparse.Namespace, scenario: dict[str, Any], known_agent
     return result
 
 
+def build_grant_floor_payload(target_url: str, client_uri: str, client_url: str) -> dict[str, Any]:
+    """Build a grantFloor envelope so agents with a floor gate will accept the utterance."""
+    return {
+        "openFloor": {
+            "conversation": {"id": str(uuid.uuid4()), "conversants": []},
+            "sender": {"speakerUri": client_uri, "serviceUrl": client_url},
+            "events": [{"eventType": "grantFloor", "to": {"serviceUrl": target_url}}],
+        }
+    }
+
+
 def build_payload(event_type: str, target_url: str, utterance: str, client_uri: str, client_url: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "openFloor": {
@@ -236,6 +247,15 @@ def run_harness(args: argparse.Namespace) -> int:
     print(f"Running {total} dispatches: event={event_type}, transport=direct")
 
     for agent_url, agent_name in targets:
+        if event_type == "utterance":
+            # Send grantFloor first so agents with a floor gate will respond.
+            # Agents without a floor gate silently ignore it.
+            grant_payload = build_grant_floor_payload(agent_url, client_uri, client_url)
+            try:
+                http_post_json(agent_url, grant_payload, min(timeout_ms, 5000))
+            except Exception:
+                pass
+
         for _ in range(repeat):
             payload = build_payload(event_type, agent_url, utterance, client_uri, client_url)
             started = time.perf_counter()

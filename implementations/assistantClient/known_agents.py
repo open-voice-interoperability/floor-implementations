@@ -5,6 +5,7 @@ KNOWN_AGENTS = [
     "http://192.168.4.51:8080/",
     "http://192.168.4.51:8767/",
     "http://192.168.4.51:8768/",
+    "http://localhost:8208/",
     "http://secondAssistant.pythonanywhere.com/verity/",
     "https://openvoice-stella.vercel.app/",
     "https://bladeszasza-ofpbadword.hf.space/ofp",
