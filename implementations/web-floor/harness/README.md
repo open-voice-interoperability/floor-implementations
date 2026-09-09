@@ -128,6 +128,21 @@ Results Summary table columns:
 
 Selecting a row opens full JSON detail in the lower panel.
 
+### Response Report
+
+The **Open Response Report** button opens a separate window listing every
+result as three plain columns — Utterance, Agent, Response text — with no
+JSON. Click a column heading, or use the Sort by control, to sort by
+utterance or by agent. It reflects the current summary filters.
+
+- **Copy rows** (button, or Ctrl+C in the table): copies the selected rows —
+  or all rows if none are selected — to the clipboard as tab-separated
+  text, one row per result, ready to paste into a spreadsheet.
+- **Export CSV**: writes the report (current sort order) to a `.csv` file,
+  with full multi-line response text preserved.
+- The lower panel shows the full response for the selected row; select text
+  there and Ctrl+C to copy it verbatim.
+
 ## 8. Filter Results
 
 Use the summary filter controls:

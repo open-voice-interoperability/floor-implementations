@@ -45,6 +45,66 @@ def _extract_event_types(response: object) -> list[str]:
     return types
 
 
+def _response_utterances(response: object) -> list[tuple[str, str]]:
+    """(speakerUri, text) for every utterance event in an OFP response
+    envelope -- speakerUri is "" when the reply carries none. Handles the
+    plain {"openFloor": {...}} shape and a bare {"events": [...]}."""
+    if not isinstance(response, dict):
+        return []
+    open_floor = response.get("openFloor")
+    events = open_floor.get("events") if isinstance(open_floor, dict) else None
+    if events is None:
+        events = response.get("events")
+    if not isinstance(events, list):
+        return []
+
+    out: list[tuple[str, str]] = []
+    for event in events:
+        if not isinstance(event, dict) or event.get("eventType") != "utterance":
+            continue
+        params = event.get("parameters") or {}
+        dialog = params.get("dialogEvent") or event.get("dialogEvent") or {}
+        speaker = (dialog.get("speakerUri") or "").strip()
+        features = dialog.get("features") or {}
+        tokens = (features.get("text") or {}).get("tokens") or []
+        text = " ".join(
+            (t.get("value", "") if isinstance(t, dict) else str(t)) for t in tokens
+        ).strip()
+        if text:
+            out.append((speaker, text))
+    return out
+
+
+def _response_text(response: object) -> str:
+    """All reply text from an OFP response envelope, joined -- or the raw
+    string if the response wasn't a parseable envelope."""
+    utterances = _response_utterances(response)
+    if utterances:
+        return "\n\n".join(text for _speaker, text in utterances)
+    if isinstance(response, str):
+        return response.strip()
+    if isinstance(response, dict) and response.get("error"):
+        return f"[error] {response.get('error')}"
+    return ""
+
+
+def _one_line(text: str, limit: int = 200) -> str:
+    """Collapse whitespace/newlines to a single line, capped for a table cell."""
+    collapsed = " ".join((text or "").split())
+    return collapsed if len(collapsed) <= limit else collapsed[: limit - 1] + "…"
+
+
+def _sort_report_rows(rows: list[dict], mode: str) -> list[dict]:
+    """Return `rows` ({utterance, agent, response}) sorted per `mode`:
+    "Utterance" or "Agent" (case-insensitive, tie-broken by the other
+    field); anything else keeps the given (run) order."""
+    if mode == "Utterance":
+        return sorted(rows, key=lambda r: (r["utterance"].lower(), r["agent"].lower()))
+    if mode == "Agent":
+        return sorted(rows, key=lambda r: (r["agent"].lower(), r["utterance"].lower()))
+    return list(rows)
+
+
 class OFPTestHarnessApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -302,6 +362,9 @@ class OFPTestHarnessApp:
 
         self.chart_btn = ttk.Button(action_frame, text="Open Summary Chart", command=self._open_summary_chart)
         self.chart_btn.grid(row=3, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
+
+        self.report_btn = ttk.Button(action_frame, text="Open Response Report", command=self._open_response_report)
+        self.report_btn.grid(row=3, column=1, sticky="ew", pady=(6, 0), padx=(4, 0))
 
         row += 1
 
@@ -770,6 +833,191 @@ class OFPTestHarnessApp:
                 ),
             )
             self._selected_response_by_row[item_id] = row
+
+    def _open_response_report(self) -> None:
+        """Separate window: one row per result showing just the utterance,
+        the agent that answered, and the agent's response text -- no JSON.
+        Sortable by utterance or by agent. Reflects the current summary
+        filters."""
+        if not self._filtered_results():
+            messagebox.showinfo(
+                "Response report",
+                "No results available yet (or none match the current filters).",
+            )
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Response Report")
+        win.geometry("1100x700")
+        win.columnconfigure(0, weight=1)
+        win.rowconfigure(1, weight=3)
+        win.rowconfigure(3, weight=2)
+
+        sort_var = tk.StringVar(value="Run order")
+        row_by_item: dict[str, dict] = {}
+
+        def report_rows() -> list[dict]:
+            data = [
+                {
+                    "utterance": (r.get("utterance_sent") or "").strip(),
+                    "agent": (r.get("agent_name") or "").strip(),
+                    "response": _response_text(r.get("response")),
+                }
+                for r in self._filtered_results()
+            ]
+            return _sort_report_rows(data, sort_var.get())
+
+        def populate() -> None:
+            tree.delete(*tree.get_children())
+            row_by_item.clear()
+            for r in report_rows():
+                item = tree.insert(
+                    "",
+                    tk.END,
+                    values=(
+                        _one_line(r["utterance"], 200),
+                        r["agent"],
+                        _one_line(r["response"], 300),
+                    ),
+                )
+                row_by_item[item] = r
+            detail.delete("1.0", tk.END)
+
+        def on_select(_event: object = None) -> None:
+            selection = tree.selection()
+            if not selection:
+                return
+            r = row_by_item.get(selection[0])
+            if not r:
+                return
+            detail.delete("1.0", tk.END)
+            detail.insert(
+                "1.0",
+                f"UTTERANCE\n{r['utterance'] or '(none)'}\n\n"
+                f"AGENT\n{r['agent'] or '(none)'}\n\n"
+                f"RESPONSE\n{r['response'] or '(no text)'}\n",
+            )
+
+        def set_sort(mode: str) -> None:
+            sort_var.set(mode)
+            populate()
+
+        def rows_to_copy() -> list[dict]:
+            """Selected rows, or every row (in the current sort order) if
+            nothing is selected."""
+            selection = tree.selection()
+            if selection:
+                return [row_by_item[i] for i in selection if i in row_by_item]
+            return report_rows()
+
+        def copy_rows(_event: object = None) -> str:
+            rows = rows_to_copy()
+            if not rows:
+                return "break"
+            flat = lambda s: " ".join(str(s or "").split())
+            lines = ["utterance\tagent\tresponse"]
+            lines += [f"{flat(r['utterance'])}\t{flat(r['agent'])}\t{flat(r['response'])}" for r in rows]
+            win.clipboard_clear()
+            win.clipboard_append("\n".join(lines))
+            return "break"
+
+        def export_csv(_event: object = None) -> None:
+            rows = report_rows()
+            if not rows:
+                messagebox.showinfo("Export report CSV", "Nothing to export.", parent=win)
+                return
+            path = filedialog.asksaveasfilename(
+                parent=win,
+                title="Export response report as CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+            try:
+                with open(path, "w", newline="", encoding="utf-8-sig") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["utterance", "agent", "response"])
+                    for r in rows:
+                        writer.writerow([r["utterance"], r["agent"], r["response"]])
+            except OSError as error:
+                messagebox.showerror("Export report CSV", f"Could not write file:\n{error}", parent=win)
+                return
+            messagebox.showinfo("Export report CSV", f"Wrote {len(rows)} row(s) to:\n{path}", parent=win)
+
+        toolbar = ttk.Frame(win, padding=(8, 8, 8, 0))
+        toolbar.grid(row=0, column=0, sticky="ew")
+        ttk.Label(toolbar, text="Sort by:").pack(side="left")
+        sort_combo = ttk.Combobox(
+            toolbar,
+            textvariable=sort_var,
+            state="readonly",
+            width=14,
+            values=["Run order", "Utterance", "Agent"],
+        )
+        sort_combo.pack(side="left", padx=(6, 0))
+        sort_combo.bind("<<ComboboxSelected>>", lambda _e: populate())
+        ttk.Label(
+            toolbar, text="(or click the Utterance / Agent column heading)"
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(toolbar, text="Export CSV", command=export_csv).pack(side="right")
+        ttk.Button(toolbar, text="Copy rows", command=copy_rows).pack(side="right", padx=(0, 6))
+
+        table_frame = ttk.Frame(win, padding=(8, 6, 8, 0))
+        table_frame.grid(row=1, column=0, sticky="nsew")
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+
+        tree = ttk.Treeview(
+            table_frame, columns=("utterance", "agent", "response"), show="headings"
+        )
+        tree.heading("utterance", text="Utterance", command=lambda: set_sort("Utterance"))
+        tree.heading("agent", text="Agent", command=lambda: set_sort("Agent"))
+        tree.heading("response", text="Response text")
+        tree.column("utterance", width=360, anchor="w")
+        tree.column("agent", width=200, anchor="w")
+        tree.column("response", width=480, anchor="w")
+        tree.grid(row=0, column=0, sticky="nsew")
+        tree_v = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        tree_v.grid(row=0, column=1, sticky="ns")
+        tree_h = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+        tree_h.grid(row=1, column=0, sticky="ew")
+        tree.configure(yscrollcommand=tree_v.set, xscrollcommand=tree_h.set)
+        tree.bind("<<TreeviewSelect>>", on_select)
+        tree.bind("<Control-c>", copy_rows)
+        tree.bind("<Control-C>", copy_rows)
+
+        ttk.Label(
+            win,
+            text="Full response for the selected row (select text and Ctrl+C to copy)",
+            padding=(8, 8, 8, 2),
+        ).grid(row=2, column=0, sticky="w")
+        detail_frame = ttk.Frame(win, padding=(8, 0, 8, 8))
+        detail_frame.grid(row=3, column=0, sticky="nsew")
+        detail_frame.rowconfigure(0, weight=1)
+        detail_frame.columnconfigure(0, weight=1)
+        # Left editable so the text is selectable and Ctrl+C works; keystrokes
+        # other than copy/select/navigation are swallowed so it stays effectively
+        # read-only. populate()/on_select() rewrite it wholesale anyway.
+        detail = tk.Text(detail_frame, wrap="word", height=8)
+        detail.grid(row=0, column=0, sticky="nsew")
+        detail_v = ttk.Scrollbar(detail_frame, orient="vertical", command=detail.yview)
+        detail_v.grid(row=0, column=1, sticky="ns")
+        detail.configure(yscrollcommand=detail_v.set)
+
+        def _detail_readonly(event: tk.Event) -> object:
+            if (event.state & 0x4) and event.keysym.lower() in ("c", "a", "insert"):
+                return None  # Ctrl+C / Ctrl+A / Ctrl+Insert
+            if event.keysym in (
+                "Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next",
+                "Shift_L", "Shift_R", "Control_L", "Control_R",
+            ):
+                return None
+            return "break"
+
+        detail.bind("<Key>", _detail_readonly)
+
+        populate()
 
     def _open_summary_chart(self) -> None:
         if not self.results:
