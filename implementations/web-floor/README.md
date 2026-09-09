@@ -1,8 +1,16 @@
 # web-floor
 
-JavaScript web version of the Python `assistantClient`.
+A browser UI backed by a Flask gateway. The gateway runs a spec-literal
+**floor manager** (the default path for multi-agent conversations — it owns
+conversant/floor state and routes each event per the Open Floor Protocol
+Pass-Through / Delegate-to-Convener table) and keeps a **raw relay** for
+manual single-agent pokes. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Features
+- Floor-managed multi-agent conversations via `/api/floor/send`,
+  `/api/floor/stream` (incremental NDJSON), and `/api/floor/state`
+- Floor-holder status: an agent can stream a "working on it" note and the
+  gateway re-requests its finished answer (`resumeAfterFloorHolder`)
 - Invite/uninvite agents
 - Send utterances (broadcast or selected agents)
 - Directed utterance routing by leading conversational name (`to.speakerUri`)
@@ -10,6 +18,8 @@ JavaScript web version of the Python `assistantClient`.
 - Conversation history with conversational-name preference
 - Agent status indicators (idle/error/working pulse)
 - Incoming/outgoing envelope logging
+- Two UIs in `public/`: general-purpose `index.html` and `cafeteria-ops.html`
+  (a task-styled "Cafeteria Ops Planner" board over the same gateway)
 
 ## Architecture
 
@@ -22,7 +32,10 @@ python -m pip install -r requirements.txt
 python api/flask_gateway.py
 ```
 
-Open: `http://localhost:8090`
+Open: `http://localhost:8090` for the general-purpose UI, or
+`http://localhost:8090/cafeteria-ops.html` for the Cafeteria Ops Planner
+(expects the cafeteria-ops convener plus specialists on
+`127.0.0.1:8300`–`8310`; see `harness/known_agents.json`).
 
 ## Run independent CLI test harness
 The web-based test harness has been removed. Use the standalone Python harness launcher:
@@ -71,7 +84,8 @@ Included deployment files:
 - `vercel.json` to serve static UI from `public/` and route gateway APIs to Python
 
 Current Vercel routing behavior:
-- `public/**` served by `@vercel/static`
+- `public/**` served by `@vercel/static` (so `cafeteria-ops.html` is reachable
+  at `/cafeteria-ops.html`)
 - `/api/*` and `/health` routed to `api/index.py` (`@vercel/python`)
 - `/` served as `public/index.html`
 
@@ -90,8 +104,11 @@ If the UI is hosted elsewhere, set a gateway URL via either:
 - global before `app.js`: `window.WEB_FLOOR_GATEWAY_BASE_URL = "http://localhost:8090"`
 
 ## Notes
-- The web app uses a Flask proxy (`/api/proxy-send`) in `api/flask_gateway.py` to send OpenFloor payloads to agents.
+- Floor-managed traffic goes through `/api/floor/*` (routed by
+  `floor_router.py`); `/api/proxy-send` / `/api/proxy-stream` in
+  `api/flask_gateway.py` remain a stateless single-agent relay for manual pokes.
 - Node runtime is not required for this implementation.
-- Known agents are configured in `public/app.js` (`KNOWN_AGENTS`).
+- Known agents for the general-purpose UI are configured in `public/app.js`
+  (`KNOWN_AGENTS`); `cafeteria-ops.html` carries its own fixed roster.
 - Localhost entries in the known-agent UI are only shown in local client contexts.
 - Additional architecture detail is available in `ARCHITECTURE.md` and `architecture.mmd`.
