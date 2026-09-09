@@ -18,6 +18,7 @@ implements -- so no rewrite is needed when Phase 2 lands.
 import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from floor_state import ConversationState, normalize_id
 
@@ -182,18 +183,93 @@ def resolve_pass_through_targets(conv: ConversationState, event: dict, sender_sp
     ]
 
 
-def _build_outbound_envelope(floor_manager_identity: dict, conv_id: str, event: dict) -> dict:
+def _conversants_payload(conv) -> list:
+    """Build the OFP conversation.conversants array for an outbound
+    envelope: the identification block of every conversant currently on
+    conv's floor. Shared by _build_outbound_envelope (every agent-facing
+    delivery) and _call_convener's floorGranted-augmented version, so a
+    recipient agent can see who else (if anyone) is on the floor -- e.g.
+    base_strategy_agent.py's scope gate uses this to tell "I'm the only
+    agent here, a decline message is useful" apart from "some other
+    conversant can presumably handle this, stay silent"."""
+    return [
+        {
+            "identification": {
+                "speakerUri": c.speaker_uri,
+                "serviceUrl": c.service_url,
+                "conversationalName": c.conversational_name,
+                # organization/synopsis are mandatory (non-Optional) fields
+                # on the openfloor package's Identification dataclass --
+                # empty strings are structurally valid, and callers only
+                # ever read speakerUri/serviceUrl/conversationalName back
+                # out of this list, so no information is actually lost.
+                "organization": "",
+                "synopsis": "",
+            }
+        }
+        for c in conv.conversants.values()
+    ]
+
+
+def _build_outbound_envelope(floor_manager_identity: dict, conv, event: dict) -> dict:
     return {
         "openFloor": {
             "schema": {"version": "1.1", "url": "https://openvoicenetwork.org/schema"},
-            "conversation": {"id": conv_id},
+            "conversation": {"id": conv.conv_id, "conversants": _conversants_payload(conv)},
             "sender": floor_manager_identity,
             "events": [event],
         }
     }
 
 
-def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
+_FLOOR_HOLDER_FEATURE = "floorHolder"
+_RESUME_FEATURE = "resumeAfterFloorHolder"
+
+
+def _event_features(event: dict) -> dict:
+    params = event.get("parameters") or {}
+    dialog = params.get("dialogEvent") or event.get("dialogEvent") or {}
+    return dialog.get("features") or {}
+
+
+def _first_floor_holder(events) -> "dict | None":
+    """The first reply event that is a transient "floor holder" status
+    (an utterance flagged with the floorHolder feature) rather than the
+    agent's actual answer -- see base_strategy_agent.py's _append_floor_holder."""
+    for e in events or []:
+        if isinstance(e, dict) and e.get("eventType") == UTTERANCE and _FLOOR_HOLDER_FEATURE in _event_features(e):
+            return e
+    return None
+
+
+def _clean_event(event: dict) -> dict:
+    e = dict(event)
+    e.pop(_ORIGIN_KEY, None)
+    e.pop(_TRUSTED_KEY, None)
+    return e
+
+
+def _build_resume_event(conversant, original_event: dict, conv, floor_manager_identity: dict) -> dict:
+    """The gateway's follow-up request after a floor holder: asks `conversant`
+    to hand back the answer whose work it has been running since the first
+    request. Delivered straight to that conversant -- it never enters the
+    routing table."""
+    return {
+        "eventType": UTTERANCE,
+        "to": {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url},
+        "parameters": {"dialogEvent": {
+            "id": f"resume:{normalize_id(conv.conv_id) or 'conv'}",
+            "speakerUri": floor_manager_identity.get("speakerUri", ""),
+            "span": {"startTime": datetime.now(timezone.utc).isoformat()},
+            "features": {
+                "text": {"tokens": [{"value": _extract_utterance_text(original_event)}]},
+                _RESUME_FEATURE: {"tokens": [{"value": conv.conv_id}]},
+            },
+        }},
+    }
+
+
+def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv, deliver, timeout: float, on_progress=None, on_event=None) -> list:
     """Send `event` to one conversant's serviceUrl via the injected
     `deliver` callback; returns whatever event dicts it replied with (an
     empty list on failure -- delivery failures must never abort the round).
@@ -207,12 +283,26 @@ def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, c
     network call so a caller (e.g. flask_gateway.py's streaming endpoint)
     can surface real per-conversant activity to a client. May be called from
     a worker thread when reached via deliver_concurrently's thread pool, so
-    it must be safe to call concurrently (a thread-safe queue.put is)."""
-    envelope = _build_outbound_envelope(floor_manager_identity, conv_id, event)
+    it must be safe to call concurrently (a thread-safe queue.put is).
+
+    `on_event(event)` -- when the conversant returns a "floor holder" status
+    instead of its answer (its real work is still running), that status is
+    streamed via on_event immediately and a resume request is sent to
+    collect the finished answer, which is what this function then returns.
+    Agents that don't use the protocol just answer normally and this is a
+    no-op."""
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, event)
     if on_progress:
         on_progress(conversant.speaker_uri, conversant.service_url, "working")
     try:
         events = _deliver_with_retry(conversant, envelope, deliver, timeout)
+        holder = _first_floor_holder(events)
+        if holder is not None:
+            if on_event:
+                on_event(_clean_event(holder))
+            resume_event = _build_resume_event(conversant, event, conv, floor_manager_identity)
+            resume_env = _build_outbound_envelope(floor_manager_identity, conv, resume_event)
+            events = _deliver_with_retry(conversant, resume_env, deliver, timeout)
     finally:
         if on_progress:
             on_progress(conversant.speaker_uri, conversant.service_url, "idle")
@@ -268,7 +358,7 @@ def _deliver_with_retry(conversant, envelope: dict, deliver, timeout: float) -> 
         return []
 
 
-def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
+def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv, deliver, timeout: float, on_progress=None, on_event=None) -> list:
     """Deliver `event` to every target concurrently (they're independent
     recipients of the same one event -- the spec's normative
     sequential-processing rule governs the EVENT QUEUE, not fan-out to
@@ -278,10 +368,10 @@ def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dic
     if not targets:
         return []
     if len(targets) == 1:
-        return deliver_and_collect(targets[0], event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
+        return deliver_and_collect(targets[0], event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
     with ThreadPoolExecutor(max_workers=min(MAX_CONCURRENT_DELIVERIES, len(targets))) as pool:
         futures = [
-            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
+            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
             for target in targets
         ]
         results = [f.result() for f in futures]
@@ -442,13 +532,13 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                         "eventType": REVOKE_FLOOR,
                         "to": {"speakerUri": sender_conversant.speaker_uri, "serviceUrl": sender_conversant.service_url},
                     }
-                    revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                    revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv, deliver, timeout, on_progress)
                     apply_local_state(conv, revoke_event, sender_speaker_uri)
                     pending_self_revoke = revoke_event
                     queue.extend(revoke_replies)
 
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
             # NOT finalize()-ing reply_events here -- each reply re-enters
             # the SAME table (queue.extend below) and gets finalized exactly
             # once, when ITS OWN turn through the loop reaches the
@@ -514,7 +604,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # own local floor gate (e.g. base_strategy_agent.py's
             # _floor_granted), which is the real point of grantFloor/revokeFloor.
             if target is not None:
-                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv, deliver, timeout, on_progress)
                 # NOT finalize()-ing reply_events -- same reasoning as the
                 # utterance branch above: each reply (e.g. an acceptInvite in
                 # response to this invite) re-enters the table via
@@ -527,7 +617,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
 
         if event_type in PASS_THROUGH_ALWAYS:
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv, deliver, timeout, on_progress)
             for reply_event in reply_events:
                 finalize(reply_event)
             apply_local_state(conv, event, sender_speaker_uri)
@@ -551,7 +641,7 @@ def detect_convener_role(conv: ConversationState, conversant, floor_manager_iden
     floor manager needs to know whether it just gained a convener),
     without waiting for the convener to be discovered any other way (no
     hardcoded port numbers -- works for any Open-Floor-compliant convener)."""
-    envelope = _build_outbound_envelope(floor_manager_identity, conv.conv_id, {"eventType": GET_MANIFESTS})
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, {"eventType": GET_MANIFESTS})
     try:
         events = deliver(conversant.service_url, envelope, timeout) or []
     except Exception:
@@ -582,25 +672,10 @@ def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deli
     convener = conv.convener
     if convener is None:
         return []
-    envelope = _build_outbound_envelope(floor_manager_identity, conv.conv_id, event)
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, event)
     openfloor = envelope["openFloor"]
-    openfloor["conversation"]["conversants"] = [
-        {
-            "identification": {
-                "speakerUri": c.speaker_uri,
-                "serviceUrl": c.service_url,
-                "conversationalName": c.conversational_name,
-                # organization/synopsis are mandatory (non-Optional) fields
-                # on the openfloor package's Identification dataclass --
-                # empty strings are structurally valid, and convener only
-                # ever reads speakerUri/serviceUrl/conversationalName back
-                # out of this list, so no information is actually lost.
-                "organization": "",
-                "synopsis": "",
-            }
-        }
-        for c in conv.conversants.values()
-    ]
+    # conversants is already populated by _build_outbound_envelope (via
+    # _conversants_payload) -- only floorGranted is specific to this call.
     # Spec section 1.6: floorGranted is "an array of speakerURIs", not
     # serviceUrls -- speakerUri and serviceUrl happen to be identical for
     # every agent in this project's own examples, which is what let this

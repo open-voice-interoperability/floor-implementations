@@ -1,0 +1,1530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cafeteria Ops Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Caveat:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --wall:#d7dbd0; --sheet:#f6f7f3; --sheet-2:#edefe7;
+    --rule:#cdd0c5; --rule-strong:#a7ab9c;
+    --ink:#22271e; --ink-soft:#5b6152; --ink-faint:#8b9080;
+    --accent:#d5432e; --accent-ink:#ffffff;
+    --good:#4e7a34; --warn:#b9791f; --crit:#b12c1c;
+    --chip-good-bg:#e4efd8; --chip-warn-bg:#f4e6cf; --chip-crit-bg:#f3d9d3;
+    --st-menu:#42566b; --st-recipe:#b26b3e; --st-nutri:#4e7a34;
+    --st-opt:#2f7e7b; --st-inv:#3e6fa8; --st-proc:#c77b26; --st-shop:#8a7a4e;
+    --shadow: 0 1px 0 rgba(255,255,255,.5), 0 22px 44px -26px rgba(20,24,18,.5);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --wall:#111310; --sheet:#20241f; --sheet-2:#1a1d19;
+      --rule:#383f38; --rule-strong:#525a51;
+      --ink:#e9ebe1; --ink-soft:#a3a99a; --ink-faint:#767c6c;
+      --accent:#e75c42; --accent-ink:#1a1109;
+      --good:#84b463; --warn:#d99f4c; --crit:#e46b57;
+      --chip-good-bg:#26331d; --chip-warn-bg:#3a2f18; --chip-crit-bg:#3a1f19;
+      --st-menu:#7f99b3; --st-recipe:#d99a66; --st-nutri:#8dc165;
+      --st-opt:#59b4b0; --st-inv:#7ba8d9; --st-proc:#e2a55e; --st-shop:#c6b785;
+      --shadow: 0 1px 0 rgba(255,255,255,.04), 0 24px 46px -24px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --wall:#111310; --sheet:#20241f; --sheet-2:#1a1d19;
+    --rule:#383f38; --rule-strong:#525a51;
+    --ink:#e9ebe1; --ink-soft:#a3a99a; --ink-faint:#767c6c;
+    --accent:#e75c42; --accent-ink:#1a1109;
+    --good:#84b463; --warn:#d99f4c; --crit:#e46b57;
+    --chip-good-bg:#26331d; --chip-warn-bg:#3a2f18; --chip-crit-bg:#3a1f19;
+    --st-menu:#7f99b3; --st-recipe:#d99a66; --st-nutri:#8dc165;
+    --st-opt:#59b4b0; --st-inv:#7ba8d9; --st-proc:#e2a55e; --st-shop:#c6b785;
+    --shadow: 0 1px 0 rgba(255,255,255,.04), 0 24px 46px -24px rgba(0,0,0,.7);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--wall); color:var(--ink);
+    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wall{ min-height:100vh; padding:clamp(14px, 3vw, 40px); }
+  .sheet{
+    max-width:1200px; margin:0 auto; background:var(--sheet);
+    border:1px solid var(--rule-strong); border-radius:3px;
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+
+  .banner{
+    display:none;
+    padding:10px clamp(16px,3vw,30px);
+    background:var(--chip-crit-bg); color:var(--crit);
+    font-family:"Oswald","Arial Narrow",sans-serif;
+    font-size:12px; letter-spacing:.06em;
+    border-bottom:1px solid var(--rule);
+  }
+  .banner.show{ display:block; }
+
+  .masthead{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:20px; flex-wrap:wrap;
+    padding:22px clamp(16px,3vw,30px) 16px;
+    border-bottom:3px double var(--rule-strong);
+  }
+  .brand-kicker{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
+    letter-spacing:.32em; text-transform:uppercase; font-size:11px;
+    color:var(--ink-soft); margin:0 0 -6px;
+  }
+  .brand-title{
+    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-weight:400;
+    letter-spacing:.04em; font-size:clamp(40px,8vw,68px);
+    line-height:.9; margin:0; text-wrap:balance;
+  }
+  .form-fields{ display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap; }
+  .field label{
+    display:block; font-family:"Oswald","Arial Narrow",sans-serif;
+    font-size:9.5px; letter-spacing:.24em; text-transform:uppercase;
+    color:var(--ink-faint); margin-bottom:2px;
+  }
+  .field .val{
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:22px; font-weight:700;
+    line-height:1; border-bottom:2px solid var(--ink-soft); padding-bottom:3px;
+    min-width:60px; display:block;
+  }
+  .btn-ghost{
+    border:1.5px solid var(--rule-strong); background:transparent; color:var(--ink);
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:10px;
+    letter-spacing:.18em; text-transform:uppercase; padding:8px 12px;
+    border-radius:2px; cursor:pointer; align-self:center;
+  }
+  .btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
+
+  .expo{
+    display:flex; align-items:center; gap:14px;
+    background:var(--accent); color:var(--accent-ink);
+    padding:9px clamp(16px,3vw,30px);
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
+    letter-spacing:.2em; text-transform:uppercase; font-size:11px;
+  }
+  .expo .tag{ opacity:.75; }
+  .expo .now{ letter-spacing:.12em; }
+  .expo .beacon{
+    width:9px; height:9px; border-radius:50%; background:var(--accent-ink);
+    animation:beacon 1.8s ease-out infinite;
+  }
+  .expo[data-idle="1"] .beacon{ animation:none; opacity:.4; }
+  @keyframes beacon{
+    0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-ink) 65%, transparent); }
+    70%{ box-shadow:0 0 0 9px color-mix(in srgb, var(--accent-ink) 0%, transparent); }
+    100%{ box-shadow:0 0 0 0 transparent; }
+  }
+
+  .call{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:16px clamp(16px,3vw,30px);
+    border-bottom:1px solid var(--rule); background:var(--sheet-2);
+  }
+  .call .lbl{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .call input{
+    flex:1 1 320px; min-width:0; border:0; background:transparent;
+    border-bottom:2px solid var(--ink); color:var(--ink);
+    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
+    font-size:15px; font-weight:500;
+    padding:6px 2px;
+  }
+  .call input:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .call button{
+    border:0; background:var(--accent); color:var(--accent-ink);
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; font-size:11px;
+    padding:11px 18px; border-radius:2px; cursor:pointer; white-space:nowrap;
+  }
+  .call button:hover{ filter:brightness(1.06); }
+  .call button:disabled{ opacity:.5; cursor:progress; }
+  .call button:active{ transform:translateY(1px); }
+
+  .kpis{ display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--rule); }
+  .kpi{
+    padding:14px clamp(12px,2vw,22px); border-right:1px solid var(--rule);
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .kpi:last-child{ border-right:0; }
+  .kpi .k-lbl{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--ink-faint);
+  }
+  .kpi .k-val{
+    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:34px;
+    line-height:.85; letter-spacing:.02em; font-variant-numeric:tabular-nums;
+  }
+  .kpi .k-note{ font-size:11px; color:var(--ink-soft); }
+  .chip{
+    align-self:flex-start; font-family:"Oswald","Arial Narrow",sans-serif;
+    font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+    padding:3px 7px; border-radius:2px;
+  }
+  .chip.good{ background:var(--chip-good-bg); color:var(--good); }
+  .chip.warn{ background:var(--chip-warn-bg); color:var(--warn); }
+  .chip.crit{ background:var(--chip-crit-bg); color:var(--crit); }
+  .chip.muted{ background:var(--sheet-2); color:var(--ink-faint); border:1px solid var(--rule); }
+
+  .board-scroll{ overflow-x:auto; }
+  .board{
+    display:grid;
+    grid-template-columns:200px repeat(5, minmax(158px, 1fr));
+    min-width:920px;
+  }
+  .board > *{ border-bottom:1px solid var(--rule); border-right:1px solid var(--rule); }
+  .col-head{
+    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:20px;
+    letter-spacing:.1em; padding:8px 12px 5px; color:var(--ink-soft);
+    border-bottom:2px solid var(--accent); background:var(--sheet);
+    position:sticky; top:0;
+  }
+  .corner{
+    background:var(--sheet); border-bottom:2px solid var(--accent);
+    position:sticky; top:0; left:0; z-index:3; padding:8px 12px 5px;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; color:var(--ink-faint);
+  }
+
+  .stn{
+    position:sticky; left:0; z-index:2; background:var(--sheet);
+    padding:12px 12px 12px 16px; display:flex; flex-direction:column; gap:8px;
+    border-left:5px solid var(--hue, var(--rule-strong));
+  }
+  .stn h3{
+    margin:0; font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; font-size:14px; line-height:1.05;
+  }
+  .stn .agent{
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; font-weight:600;
+    color:var(--ink-faint); line-height:1;
+  }
+  .stn .src{
+    display:block; margin-top:4px;
+    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
+    font-size:9.5px; line-height:1.4; letter-spacing:.01em;
+    color:var(--ink-faint); max-width:150px;
+  }
+  /* live "what this agent is working on" note (a floor-holder status) */
+  .stn .working{
+    font-family:"Caveat","Comic Sans MS",cursive;
+    font-size:20px; line-height:1.2; color:var(--accent);
+    max-width:160px;
+  }
+  .stn .working::before{ content:"✎ "; opacity:.7; }
+  .stn .ask-open{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);
+    background:none; border:0; padding:0; cursor:pointer; text-align:left;
+  }
+  .stn .ask-open:hover{ color:var(--accent); }
+  .stn form.ask{ display:none; flex-direction:column; gap:5px; }
+  .stn form.ask.show{ display:flex; }
+  .stn form.ask input{
+    border:0; border-bottom:1.5px solid var(--ink); background:transparent;
+    color:var(--ink); font-family:"Caveat","Comic Sans MS",cursive;
+    font-size:15px; font-weight:600; padding:2px;
+  }
+  .stn form.ask button{
+    border:0; background:var(--accent); color:var(--accent-ink);
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9px;
+    letter-spacing:.12em; text-transform:uppercase; padding:5px 8px;
+    border-radius:2px; cursor:pointer; align-self:flex-start;
+  }
+  .stn .avatar{
+    margin-top:4px; width:56px; height:56px; flex:none; overflow:hidden;
+    border-radius:50%;
+    border:1px solid color-mix(in srgb, var(--hue, var(--rule-strong)) 45%, var(--rule));
+  }
+  .stn .avatar svg{ display:block; width:100%; height:100%; color:var(--hue, var(--rule-strong)); }
+  /* literal colours -- a face is lit the same in either theme, like .plate */
+  .stn .avatar .av-bg{ fill:color-mix(in srgb, var(--hue, var(--rule-strong)) 16%, var(--sheet)); }
+  .stn .avatar .av-shirt{ fill:currentColor; }
+  .stn .avatar .av-skin{ fill:var(--av-skin, #ecbb92); }
+  .stn .avatar .av-hair{ fill:var(--av-hair, #33261c); }
+  .stn .avatar .av-eye{ fill:#2b2320; }
+  .stn .avatar .av-mouth{ fill:none; stroke:#8a5545; stroke-width:1.3; stroke-linecap:round; }
+  .stn .avatar .av-hat{ fill:#f5f3ed; stroke:#c9c2b2; stroke-width:.8; stroke-linejoin:round; }
+  .stn .avatar .av-spec{ fill:none; stroke:#33302c; stroke-width:1.3; stroke-linecap:round; }
+  .stn .avatar .av-board{ fill:#f5f3ed; stroke:#b7ad9b; stroke-width:.8; }
+  .stn .avatar .av-clip{ fill:#a79e8c; }
+  .stn .avatar .av-line{ fill:none; stroke:#c1b7a4; stroke-width:1; stroke-linecap:round; }
+  .stn .avatar .av-tick{ fill:none; stroke:#5f8f4f; stroke-width:1; stroke-linecap:round; stroke-linejoin:round; }
+  .stn .avatar .av-coat{ fill:#f6f5f1; stroke:#c9c3b4; stroke-width:.7; stroke-linejoin:round; }
+  .stn .avatar .av-pen{ stroke:currentColor; stroke-width:1.4; stroke-linecap:round; }
+
+  .lamp{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    letter-spacing:.14em; text-transform:uppercase;
+    padding:3px 7px 3px 6px; border-radius:2px;
+    border:1px solid var(--rule-strong); width:max-content;
+  }
+  .lamp::before{ content:""; width:8px; height:8px; border-radius:50%; background:var(--ink-faint); flex:none; }
+  .lamp.done{ color:var(--good); border-color:color-mix(in srgb,var(--good) 45%, var(--rule-strong)); }
+  .lamp.done::before{ background:var(--good); }
+  .lamp.fire{ color:var(--accent); border-color:var(--accent); }
+  .lamp.fire::before{ background:var(--accent); animation:beacon 1.5s ease-out infinite; }
+  .lamp.declined{ color:var(--warn); border-color:color-mix(in srgb,var(--warn) 45%, var(--rule-strong)); }
+  .lamp.declined::before{ background:var(--warn); }
+  .lamp.idle{ color:var(--ink-faint); }
+
+  .cell{
+    padding:11px 12px; display:flex; flex-direction:column; gap:6px;
+    position:relative; background:var(--sheet); min-width:0;
+  }
+  .cell.span{ grid-column:2 / -1; }
+  .cell .dish{ font-weight:500; }
+  .cell .sub{ color:var(--ink-soft); font-size:13px; }
+  .cell .prose{ color:var(--ink-soft); font-size:13px; white-space:pre-wrap; max-width:70ch; }
+  .cell .prose b{ color:var(--ink); font-weight:600; }
+  /* two-column flow for the list-shaped stations (recipe writeups) */
+  .cell .cols{ column-count:2; column-gap:26px; font-size:13px; color:var(--ink-soft); }
+  .cell .cols .item{ break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 10px; }
+  .cell .cols .item .itemhead{ display:block; font-weight:600; color:var(--ink); margin-bottom:2px; }
+  .cell .cols .item .itemrest{ white-space:pre-wrap; }
+  @media (max-width:780px){ .cell .cols{ column-count:1; } }
+
+  /* category-grouped flow (procurement, shopping list): bold full-width
+     category bands, items in two columns beneath each */
+  .cell .catcols{ column-count:2; column-gap:26px; font-size:13px; color:var(--ink-soft); }
+  .cell .catcols .cat{
+    column-span:all; -webkit-column-span:all;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:700;
+    letter-spacing:.08em; text-transform:uppercase; font-size:11px;
+    color:var(--ink); margin:12px 0 5px; padding-bottom:2px;
+    border-bottom:1px solid var(--rule);
+  }
+  .cell .catcols .cat:first-child{ margin-top:0; }
+  .cell .catcols .item{ break-inside:avoid; -webkit-column-break-inside:avoid; white-space:pre-wrap; margin:0 0 5px; }
+  .cell .catcols .item b{ color:var(--ink); font-weight:600; }
+  .cell .catfoot{ margin-top:10px; color:var(--ink); font-weight:600; font-size:12.5px; white-space:pre-wrap; }
+  @media (max-width:780px){ .cell .catcols{ column-count:1; } }
+
+  /* dish name -> clickable, opens the recipe popup */
+  .dishlink{
+    font:inherit; color:inherit; background:transparent; border:0; padding:0;
+    cursor:pointer; text-align:left;
+    text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px;
+    text-decoration-color:var(--rule-strong);
+  }
+  .dishlink:hover, .dishlink:focus-visible{ color:var(--accent); text-decoration-color:var(--accent); }
+  .cell .dish.dishlink{ font-weight:500; }
+  /* compact dish-name list (Recipe & Portion whole-menu cell) */
+  .cell .dishnames{ display:flex; flex-direction:column; gap:6px; font-size:13px; }
+  .cell .dishnames .dishname{ font-weight:500; color:var(--ink); }
+
+  /* Nutrition: one line per dish, dish name in bold */
+  .cell .nutri{ display:flex; flex-direction:column; gap:7px; font-size:13px; color:var(--ink-soft); }
+  .cell .nutri-line{ white-space:pre-wrap; }
+  .cell .nutri-line b{ color:var(--ink); font-weight:600; }
+  .cell .nutri-line .flag{ display:inline-block; margin:3px 0 0; }
+
+  /* Menu Optimization: section headings ("Ingredient Sharing:", "Cost Efficiency:") in bold */
+  .cell .opt{ display:flex; flex-direction:column; gap:7px; font-size:13px; color:var(--ink-soft); max-width:74ch; }
+  .cell .opt-line{ white-space:pre-wrap; }
+  .cell .opt-line b{ color:var(--ink); font-weight:600; }
+
+  /* recipe popup */
+  .rc-overlay{
+    position:fixed; inset:0; background:rgba(20,24,18,.55);
+    display:none; align-items:flex-start; justify-content:center;
+    padding:5vh 16px; z-index:50; overflow-y:auto;
+  }
+  .rc-overlay.show{ display:flex; }
+  .rc-box{
+    position:relative; background:var(--sheet); color:var(--ink);
+    border:1px solid var(--rule-strong); border-radius:4px;
+    max-width:560px; width:100%; padding:22px clamp(18px,4vw,30px);
+    box-shadow:var(--shadow);
+  }
+  .rc-close{
+    position:absolute; top:8px; right:10px; border:0; background:transparent;
+    color:var(--ink-soft); font-size:16px; line-height:1; padding:4px; cursor:pointer;
+  }
+  .rc-close:hover{ color:var(--accent); }
+  .rc-title{
+    font-family:"Oswald","Arial Narrow",sans-serif; text-transform:uppercase;
+    letter-spacing:.12em; font-size:11px; color:var(--ink-faint);
+  }
+  .rc-status{ color:var(--ink-soft); font-size:13px; margin-top:8px; }
+  .rc-portion{ margin-top:10px; }
+  .rc-toggle{ display:flex; gap:6px; margin:0 0 8px; }
+  .rc-toggle button{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; padding:5px 9px; border-radius:2px; cursor:pointer;
+    border:1px solid var(--rule-strong); background:transparent; color:var(--ink-soft);
+  }
+  .rc-toggle button.on{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .rc-amounts{ font-size:13px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
+  .rc-img{ width:100%; max-height:220px; object-fit:cover; border-radius:4px; margin:12px 0; }
+  .rc-name{ font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:26px; letter-spacing:.02em; }
+  .rc-meta{ color:var(--ink-soft); font-size:12px; margin-bottom:6px; }
+  .rc-h{
+    font-family:"Oswald","Arial Narrow",sans-serif; text-transform:uppercase;
+    letter-spacing:.14em; font-size:10px; color:var(--accent); margin:14px 0 5px;
+  }
+  .rc-ings{ margin:0; padding-left:18px; font-size:13px; color:var(--ink-soft); display:grid; gap:2px; }
+  .rc-steps{ font-size:13px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
+  .rc-src{
+    display:inline-block; margin-top:14px; color:var(--accent); font-size:12px;
+    text-decoration:none; border-bottom:1px solid currentColor;
+  }
+  .cell .check{
+    position:absolute; top:6px; right:9px;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:19px; font-weight:700; color:var(--good);
+  }
+  .cell.empty{ background:var(--sheet-2); }
+  .cell.empty::after{
+    content:"–"; color:var(--ink-faint);
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:22px;
+  }
+  .cell .aihtml{ margin-top:6px; display:flex; flex-wrap:wrap; gap:10px; }
+  .cell .aihtml img{ max-width:260px; border-radius:6px; display:block; }
+
+  .plate{
+    width:66px; height:66px; flex:none; border-radius:50%;
+    border:2px solid #f6f1e6; background:#efe9db;
+    box-shadow:0 3px 7px -2px rgba(20,24,18,.4), inset 0 0 0 1px rgba(0,0,0,.06);
+    overflow:hidden;
+  }
+  :root[data-theme="dark"] .plate{ border-color:#cdc7b7; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .plate{ border-color:#cdc7b7; } }
+  .plate img, .plate svg{ display:block; width:100%; height:100%; object-fit:cover; }
+
+  .flag{
+    align-self:flex-start; font-family:"Oswald","Arial Narrow",sans-serif;
+    font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    padding:2px 6px; border-radius:2px; font-variant-numeric:tabular-nums;
+  }
+  .flag.crit{ background:var(--chip-crit-bg); color:var(--crit); }
+
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px 20px;
+    padding:12px clamp(16px,3vw,30px);
+    border-bottom:1px solid var(--rule); background:var(--sheet-2);
+  }
+  .legend .item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
+  .legend .cap{ font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; font-weight:600; color:var(--ink-faint); }
+
+  details.log{ border-bottom:1px solid var(--rule); }
+  details.log summary{
+    list-style:none; cursor:pointer; padding:12px clamp(16px,3vw,30px);
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft);
+    display:flex; align-items:center; gap:10px;
+  }
+  details.log summary::-webkit-details-marker{ display:none; }
+  details.log summary::before{ content:"▸"; color:var(--accent); font-size:13px; }
+  details.log[open] summary::before{ content:"▾"; }
+  .log-roll{
+    padding:4px clamp(16px,3vw,30px) 18px; background:var(--sheet-2);
+    font-variant-numeric:tabular-nums; font-size:12.5px; line-height:1.7;
+    max-height:280px; overflow-y:auto;
+  }
+  .log-roll .row{ display:flex; gap:14px; color:var(--ink-soft); border-bottom:1px dashed var(--rule); padding:2px 0; }
+  .log-roll .row .t{ color:var(--ink-faint); flex:none; }
+  .log-roll .row .who{ font-family:"Oswald","Arial Narrow",sans-serif; letter-spacing:.06em; text-transform:uppercase; font-size:11px; flex:none; width:132px; }
+  .log-roll .row.fire .who{ color:var(--accent); }
+  .log-roll .row.decline .msg{ color:var(--warn); }
+  .log-roll .row.you .who{ color:var(--st-menu); }
+  .log-roll .row.err .msg{ color:var(--crit); }
+
+  footer{
+    padding:16px clamp(16px,3vw,30px) 22px;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:17px; color:var(--ink-faint);
+  }
+
+  @media (max-width:640px){
+    .kpis{ grid-template-columns:repeat(2,1fr); }
+    .kpi:nth-child(2){ border-right:0; }
+    .kpi:nth-child(1),.kpi:nth-child(2){ border-bottom:1px solid var(--rule); }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; } }
+</style>
+</head>
+<body>
+<div class="wall">
+  <div class="sheet">
+
+    <div class="banner" id="banner"></div>
+
+    <header class="masthead">
+      <div>
+        <p class="brand-kicker">Cafeteria Ops</p>
+        <h1 class="brand-title">Planner</h1>
+      </div>
+      <div class="form-fields">
+        <div class="field"><label>Week of</label><span class="val" id="weekOf">&mdash;</span></div>
+        <div class="field"><label>Diners</label><span class="val">450</span></div>
+        <button class="btn-ghost" id="newWeek" type="button">New week</button>
+        <button class="btn-ghost" id="themeToggle" type="button">Dark</button>
+      </div>
+    </header>
+
+    <div class="expo" id="expo" data-idle="1">
+      <span class="beacon" aria-hidden="true"></span>
+      <span class="tag">Coordinator</span>
+      <span class="now" id="expoNow">starting up&hellip;</span>
+    </div>
+
+    <form class="call" id="callForm" autocomplete="off">
+      <span class="lbl">Today&rsquo;s request</span>
+      <input id="callInput" value="Plan a Mediterranean 5-day lunch menu for 450 &mdash; nutrition, sourcing, and a shopping list." aria-label="Planning request">
+      <button type="submit" id="callBtn">Send</button>
+    </form>
+
+    <div class="kpis" id="kpis">
+      <div class="kpi"><span class="k-lbl">Cost / serving</span><span class="k-val" id="kpiCost">&mdash;</span><span class="chip muted" id="kpiCostChip">pending</span></div>
+      <div class="kpi"><span class="k-lbl">Sodium flags</span><span class="k-val" id="kpiNa">&mdash;</span><span class="chip muted" id="kpiNaChip">pending</span></div>
+      <div class="kpi"><span class="k-lbl">Low stock</span><span class="k-val" id="kpiPar">&mdash;</span><span class="chip muted" id="kpiParChip">pending</span></div>
+      <div class="kpi"><span class="k-lbl">Est. total</span><span class="k-val" id="kpiTotal">&mdash;</span><span class="k-note">5 days &times; 450 servings</span></div>
+    </div>
+
+    <div class="board-scroll">
+      <div class="board" id="board" role="table" aria-label="Weekly plan by agent"></div>
+    </div>
+
+    <div class="legend">
+      <span class="cap">status key &rarr;</span>
+      <span class="item"><span class="lamp idle">Idle</span> not started</span>
+      <span class="item"><span class="lamp fire">Working</span> working now</span>
+      <span class="item"><span class="lamp done">Done</span> reply posted</span>
+      <span class="item"><span class="lamp declined">Out of scope</span> declined &mdash; returned to the coordinator</span>
+    </div>
+
+    <details class="log" open>
+      <summary>Activity log</summary>
+      <div class="log-roll" id="logRoll"></div>
+    </details>
+
+    <footer id="footer">Same gateway, same event stream, same seven agents &mdash; this is just a different view.</footer>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- gateway resolution (mirrors public/app.js) ---------- */
+  function normBase(v){
+    if(!v || typeof v !== "string") return "";
+    var c = v.trim().replace(/\/+$/,"");
+    return /^https?:\/\//i.test(c) ? c : "";
+  }
+  var qp = new URLSearchParams(location.search).get("gateway") || "";
+  var GB = normBase(qp || (window.WEB_FLOOR_GATEWAY_BASE_URL || ""));
+  function isLocal(){
+    var h = (location.hostname || "").toLowerCase();
+    if (location.protocol === "file:") return true;
+    if (!h) return false;
+    if (["localhost","127.0.0.1","::1","[::1]","0.0.0.0"].indexOf(h) !== -1) return true;
+    if (/^10\./.test(h) || /^192\.168\./.test(h)) return true;
+    if (!h.includes(".")) return true;
+    return false;
+  }
+  function gw(path){
+    if (GB) return GB + path;
+    if (isLocal() && location.port !== "8090" && (location.protocol === "file:" || !location.host)) return "http://localhost:8090" + path;
+    return path; /* served from the gateway itself -> same origin */
+  }
+
+  /* ---------- roster ---------- */
+  var HOST = "127.0.0.1";
+  var CONVENER = { key:"expo", url:"http://"+HOST+":8300/", title:"Coordinator" };
+  var STATIONS = [
+    { key:"menu",  url:"http://"+HOST+":8301/", title:"Menu Designer",       agent:"menu designer",     name:"Menu Designer",                 hue:"--st-menu",   perDay:true  },
+    { key:"prep",  url:"http://"+HOST+":8303/", title:"Recipe & Portion",    agent:"recipe & portion",  name:"Recipe & Portion Specialist",   hue:"--st-recipe", perDay:true,  twoCol:true },
+    { key:"nutri", url:"http://"+HOST+":8302/", title:"Nutrition",           agent:"nutrition",         name:"Nutrition Specialist",          hue:"--st-nutri",  perDay:true  },
+    { key:"opt",   url:"http://"+HOST+":8304/", title:"Menu Optimization",   agent:"menu optimization", name:"Menu Optimization Specialist",  hue:"--st-opt",    perDay:false },
+    { key:"inv",   url:"http://"+HOST+":8305/", title:"Inventory",           agent:"inventory",         name:"Inventory Specialist",          hue:"--st-inv",    perDay:false },
+    { key:"proc",  url:"http://"+HOST+":8306/", title:"Procurement",         agent:"procurement",       name:"Procurement Specialist",        hue:"--st-proc",   perDay:false },
+    { key:"shop",  url:"http://"+HOST+":8310/", title:"Shopping List",       agent:"shopping list",     name:"Shopping List Specialist",      hue:"--st-shop",   perDay:false }
+  ];
+  /* A small cartoon-person avatar per agent: shirt in the station hue,
+     a distinct skin tone + hairstyle each, plus a role accessory (chef's
+     toque, delivery cap, or glasses). Face colours are literal, not
+     theme-swapped -- a face is lit the same in either theme, like .plate. */
+  function svgEl(str){ return new DOMParser().parseFromString(str, "image/svg+xml").documentElement; }
+  var AV_LOOK = {
+    menu:  { skin:"#f1c9a5", hair:"#5a3a22", style:"short" },
+    prep:  { skin:"#c98a5b", hair:"#241f1c", style:"short" },
+    nutri: { skin:"#f5d6b8", hair:"#8a5a2b", style:"bun"   },
+    opt:   { skin:"#a5673f", hair:"#241f1c", style:"short" },
+    inv:   { skin:"#e6b184", hair:"#d9b46a", style:"pony"  },
+    proc:  { skin:"#f1c9a5", hair:"#241f1c", style:"buzz"  },
+    shop:  { skin:"#c98a5b", hair:"#6b4f3a", style:"curly" }
+  };
+  /* Where each agent's grounding data comes from -- shown under the endpoint. */
+  var AGENT_SOURCES = {
+    menu:  "No external data — dishes and meal images are model-generated.",
+    prep:  "Data sourced from TheMealDB (recipes) and USDA FoodData Central (ingredient nutrients).",
+    nutri: "Data sourced from USDA FoodData Central (FDC).",
+    opt:   "No external data — model analysis of the proposed menu.",
+    inv:   "No external data — model reasoning; no live inventory feed.",
+    proc:  "Data sourced from USDA AMS wholesale reports, with Tavily web search for retail prices.",
+    shop:  "Ingredient data sourced from TheMealDB (via the Recipe & Portion Specialist when available)."
+  };
+  function _hairMarkup(style){
+    var top = '<path class="av-hair" d="M11.4 16.5c0-9.6 17.2-9.6 17.2 0 0-4.3-2.6-6.9-8.6-6.9s-8.6 2.6-8.6 6.9z"/>';
+    if (style === "bun")   return top + '<circle class="av-hair" cx="20" cy="6.6" r="2.9"/>';
+    if (style === "pony")  return top + '<path class="av-hair" d="M27.6 13.4c4.2 1.2 5 6.6 2.8 10.7-1-4.2-3-6.5-5.2-6.7z"/>';
+    if (style === "buzz")  return '<path class="av-hair" d="M12.5 15.7c0-7.7 15-7.7 15 0 0-3.5-2.2-5.7-7.5-5.7s-7.5 2.2-7.5 5.7z" opacity=".85"/>';
+    if (style === "curly") return '<g class="av-hair"><circle cx="12.8" cy="12.6" r="3.5"/><circle cx="17.7" cy="9" r="3.8"/>'
+                                 + '<circle cx="23" cy="9.4" r="3.7"/><circle cx="27.6" cy="12.9" r="3.3"/>'
+                                 + '<circle cx="12.6" cy="16.8" r="2.9"/><circle cx="27.6" cy="16.8" r="2.9"/></g>';
+    return top;
+  }
+  function _accMarkup(key){
+    // Menu Designer is the lead -- a noticeably taller toque.
+    if (key === "menu")
+      return '<path class="av-hat" d="M11 12.5c-3.4-9 5.6-13 9-6.8 3.4-6.2 12.4-2.2 9 6.8z"/>'
+           + '<rect class="av-hat" x="11.6" y="10.4" width="16.8" height="5.1" rx="2.3"/>';
+    if (key === "prep")
+      return '<path class="av-hat" d="M12.4 12.4c-2-5.6 5.1-8.3 7.6-4.1 2.5-4.2 9.6-1.5 7.6 4.1z"/>'
+           + '<rect class="av-hat" x="12" y="10.6" width="16" height="4.7" rx="2.1"/>';
+    var glasses = '<g class="av-spec"><circle cx="16.8" cy="16.2" r="3"/><circle cx="23.2" cy="16.2" r="3"/>'
+                + '<path d="M19.8 16.2h.4M13.8 15.3l-1.9-.6M26.2 15.3l1.9-.6"/></g>';
+    // Nutrition wears a lab coat (over the hue shirt) + glasses -- a scientist.
+    if (key === "nutri")
+      return '<path class="av-coat" d="M6.5 40c0-9 6-12.5 13.5-12.5S33.5 31 33.5 40z"/>'
+           + '<path class="av-shirt" d="M20 27.4 L15.8 40 h8.4 z"/>'
+           + '<path class="av-coat" d="M20 27.4 L14 30.4 L16.6 33.8 L20 30 z"/>'
+           + '<path class="av-coat" d="M20 27.4 L26 30.4 L23.4 33.8 L20 30 z"/>'
+           + '<line class="av-pen" x1="24.6" y1="32.4" x2="24.6" y2="37"/>'
+           + glasses;
+    if (key === "opt")
+      return glasses;
+    if (key === "inv")
+      return '<rect class="av-board" x="22" y="26.5" width="12.5" height="13.5" rx="1.4"/>'
+           + '<rect class="av-clip" x="25.8" y="24.9" width="4.9" height="2.8" rx="1"/>'
+           + '<path class="av-line" d="M24 30.5h8.5M24 33.5h8.5M24 36.5h6"/>';
+    // Procurement holds a shopping list -- a tilted paper sheet with
+    // check marks, distinct from Inventory's rigid clipboard.
+    if (key === "proc")
+      return '<g transform="rotate(-7 28 33)">'
+           + '<rect class="av-board" x="22.6" y="25.5" width="11.4" height="14.5" rx="1"/>'
+           + '<path class="av-tick" d="M24 28.4l.9 1 1.7-2M24 31.6l.9 1 1.7-2M24 34.8l.9 1 1.7-2"/>'
+           + '<path class="av-line" d="M27.4 28.2h5.4M27.4 31.4h5.4M27.4 34.6h4"/>'
+           + '</g>';
+    return "";
+  }
+  function avatarSvg(key){
+    var look = AV_LOOK[key] || { style:"short" };
+    return '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+      + '<rect class="av-bg" width="40" height="40"/>'
+      + '<path class="av-shirt" d="M4 40c0-10 7.2-14 16-14s16 4 16 14z"/>'
+      + '<rect class="av-skin" x="17.4" y="21.5" width="5.2" height="6.5" rx="2"/>'
+      + _hairMarkup(look.style)
+      + '<circle class="av-skin" cx="11.8" cy="17" r="1.7"/><circle class="av-skin" cx="28.2" cy="17" r="1.7"/>'
+      + '<circle class="av-skin" cx="20" cy="16.4" r="8.3"/>'
+      + '<circle class="av-eye" cx="16.9" cy="16.3" r="1.2"/><circle class="av-eye" cx="23.1" cy="16.3" r="1.2"/>'
+      + '<path class="av-mouth" d="M16.8 19.9Q20 22.8 23.2 19.9"/>'
+      + _accMarkup(key)
+      + '</svg>';
+  }
+  function stationForUrl(u){
+    if(!u) return null;
+    var n = String(u).replace(/\/+$/,"").toLowerCase().replace(/^agent:/,"");
+    for (var i=0;i<STATIONS.length;i++){
+      var s = STATIONS[i].url.replace(/\/+$/,"").toLowerCase();
+      if (n === s || n.indexOf(":"+STATIONS[i].url.split(":")[2]) !== -1) return STATIONS[i];
+    }
+    var m = n.match(/:(\d{4,5})\b/);
+    if (m){ for (var j=0;j<STATIONS.length;j++){ if (STATIONS[j].url.indexOf(":"+m[1]+"/") !== -1) return STATIONS[j]; } }
+    return null;
+  }
+
+  /* ---------- state ---------- */
+  var RUNTIME_HOST = location.host || location.hostname || "localhost";
+  var state = {
+    convId: (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("conv-" + Date.now()),
+    clientUri: "openFloor://" + RUNTIME_HOST + "/CafeteriaOpsLineCheck",
+    clientUrl: (location.origin && location.origin !== "null") ? location.origin : ("http://" + (location.hostname||"localhost")),
+    opened: false,
+    running: false
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+  var board = $("board"), logRoll = $("logRoll"), expo = $("expo"), expoNow = $("expoNow");
+  var callForm = $("callForm"), callInput = $("callInput"), callBtn = $("callBtn"), banner = $("banner");
+
+  /* ---------- theme ---------- */
+  (function(){
+    var root = document.documentElement, btn = $("themeToggle");
+    function cur(){ var e = root.getAttribute("data-theme"); return e || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+    function sync(){ btn.textContent = cur() === "dark" ? "Light" : "Dark"; }
+    btn.addEventListener("click", function(){ root.setAttribute("data-theme", cur() === "dark" ? "light" : "dark"); sync(); });
+    try{ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", sync); }catch(e){}
+    sync();
+  })();
+
+  /* ---------- week-of label ---------- */
+  (function(){
+    var d = new Date(), day = d.getDay(), diff = (day === 0 ? -6 : 1) - day;
+    var mon = new Date(d); mon.setDate(d.getDate() + diff);
+    $("weekOf").textContent = mon.toLocaleDateString(undefined, { day:"2-digit", month:"short" });
+  })();
+
+  /* ---------- build the board ---------- */
+  function buildBoard(){
+    board.innerHTML = "";
+    var frag = document.createDocumentFragment();
+    frag.appendChild(el("div","corner","agent / day"));
+    ["Mon","Tue","Wed","Thu","Fri"].forEach(function(d){ frag.appendChild(el("div","col-head",d)); });
+
+    STATIONS.forEach(function(s){
+      var stn = el("div","stn"); stn.style.setProperty("--hue","var("+s.hue+")");
+      var head = el("div",""); head.appendChild(el("h3","",s.title));
+      var ag = el("span","agent", s.url.replace(/^https?:\/\//,"").replace(/\/+$/,"")); head.appendChild(ag);
+      if (AGENT_SOURCES[s.key]) head.appendChild(el("span","src", AGENT_SOURCES[s.key]));
+      stn.appendChild(head);
+      var lamp = el("span","lamp idle","Idle"); s._lamp = lamp; stn.appendChild(lamp);
+      var work = el("div","working"); work.hidden = true; s._workEl = work; stn.appendChild(work);
+
+      var askBtn = el("button","ask-open","↳ ask this agent"); askBtn.type = "button";
+      var askForm = document.createElement("form"); askForm.className = "ask";
+      var askIn = document.createElement("input"); askIn.placeholder = "direct question…"; askIn.setAttribute("aria-label","Direct question to " + s.title);
+      var askGo = document.createElement("button"); askGo.type = "submit"; askGo.textContent = "Ask";
+      askForm.appendChild(askIn); askForm.appendChild(askGo);
+      askBtn.addEventListener("click", function(){ askForm.classList.toggle("show"); if (askForm.classList.contains("show")) askIn.focus(); });
+      askForm.addEventListener("submit", function(ev){
+        ev.preventDefault();
+        var q = askIn.value.trim(); if (!q) return;
+        askIn.value = ""; askForm.classList.remove("show");
+        sendCall(q, s);
+      });
+      stn.appendChild(askBtn); stn.appendChild(askForm);
+      var avatar = el("span","avatar");
+      avatar.title = s.name; avatar.setAttribute("aria-label", s.name);
+      var look = AV_LOOK[s.key];
+      if (look){ avatar.style.setProperty("--av-skin", look.skin); avatar.style.setProperty("--av-hair", look.hair); }
+      avatar.appendChild(svgEl(avatarSvg(s.key)));
+      stn.appendChild(avatar);
+      frag.appendChild(stn);
+
+      s._cells = [];
+      if (s.perDay){
+        for (var i=0;i<5;i++){ var c = el("div","cell empty"); s._cells.push(c); frag.appendChild(c); }
+      } else {
+        var span = el("div","cell span empty"); s._cells.push(span); frag.appendChild(span);
+      }
+      s._produced = false;
+    });
+    board.appendChild(frag);
+  }
+  function el(tag, cls, text){ var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+  /* ---------- lamps + expo ---------- */
+  function setLamp(s, kind, label){
+    if (!s || !s._lamp) return;
+    s._lamp.className = "lamp " + kind;
+    s._lamp.textContent = label || ({ idle:"Idle", fire:"Working", done:"Done", declined:"Out of scope" }[kind] || kind);
+  }
+  function setExpo(text, firing){
+    expoNow.textContent = text;
+    expo.setAttribute("data-idle", firing ? "0" : "1");
+  }
+
+  /* ---------- "what this agent is working on" (a floor-holder status) ---------- */
+  function reqDays(t){
+    t = String(t || "").toLowerCase();
+    var m = t.match(/(\d+)\s*[-\s]?\s*day/);
+    if (m) return parseInt(m[1], 10);
+    var words = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7 };
+    var w = t.match(/\b(one|two|three|four|five|six|seven)[\s-]*day/);
+    if (w) return words[w[1]];
+    if (/\b(weekly|full week|a week|the week|five days)\b/.test(t)) return 5;
+    return 0;
+  }
+  function workingLabel(key, reqText){
+    var d = reqDays(reqText);
+    switch (key){
+      case "menu":  return d ? ("preparing a " + d + "-day set of meals") : "designing the menu";
+      case "prep":  return "working out the recipes and portion sizes";
+      case "nutri": return "checking the nutrition levels";
+      case "opt":   return "reviewing the menu for cost and waste";
+      case "inv":   return "checking stock and par levels";
+      case "proc":  return "pricing ingredients and sourcing options";
+      case "shop":  return "totalling up the shopping list";
+      default:      return "working on it";
+    }
+  }
+  function showWorking(s, labelOverride){
+    if (!s || !s._workEl) return;
+    var label = labelOverride || workingLabel(s.key, (state && (state.lastRequest || state.lastCallText)) || (callInput && callInput.value) || "");
+    if (s._workEl.hidden || s._workEl.textContent !== label){
+      s._workEl.textContent = label;
+      logRow(s.title, "⋯ " + label, "fire");
+    }
+    s._workEl.hidden = false;
+    setExpo(s.title + " — " + label, true);
+  }
+  function hideWorking(s){
+    if (s && s._workEl){ s._workEl.hidden = true; s._workEl.textContent = ""; }
+  }
+
+  /* ---------- ticket log ---------- */
+  function logRow(who, msg, kind){
+    var row = el("div","row" + (kind ? " " + kind : ""));
+    var t = new Date();
+    row.appendChild(el("span","t", pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds())));
+    row.appendChild(el("span","who", who));
+    row.appendChild(el("span","msg", msg));
+    logRoll.appendChild(row);
+    logRoll.scrollTop = logRoll.scrollHeight;
+  }
+  function pad(n){ return String(n).padStart(2,"0"); }
+
+  /* ---------- grocery categories (mirrors shopping_list_agent.CATEGORIES) ---------- */
+  var CATEGORIES = ["Produce","Meat & Poultry","Seafood","Dairy & Eggs","Grains & Bakery",
+                    "Pantry & Dry Goods","Condiments & Sauces","Frozen","Other"];
+  /* keyword -> category, first match wins. Used only to bucket the
+     Procurement agent's flat "ingredient: guidance" lines; the Shopping
+     List agent already emits its own category headers. */
+  var CAT_RULES = [
+    [/\b(cod|salmon|tuna|shrimp|prawn|scallops?|crab|lobster|haddock|tilapia|trout|mussels?|clams?|anchov|sardine|fish)\b/i, "Seafood"],
+    [/\b(chicken|beef|pork|lamb|turkey|bacon|sausages?|ham|veal|mince|steak|brisket|meatballs?)\b/i, "Meat & Poultry"],
+    [/\b(milk|cheese|feta|mozzarella|parmesan|cheddar|yogurt|yoghurt|butter|cream|eggs?)\b/i, "Dairy & Eggs"],
+    [/\b(rice|farro|orzo|pasta|noodles?|bread|pita|tortillas?|flour|quinoa|couscous|oats?|barley|bulgur|buns?|rolls?|wraps?|breadcrumbs?)\b/i, "Grains & Bakery"],
+    [/\b(hummus|pesto|salsa|mayo|mayonnaise|mustard|ketchup|dressing|vinaigrette|soy sauce|hot sauce|sriracha|relish|chutney|tzatziki|guacamole)\b/i, "Condiments & Sauces"],
+    [/\bfrozen\b/i, "Frozen"],
+    [/\b(olive oil|vegetable oil|canola oil|oil|salt|sugar|honey|maple syrup|spices?|cumin|paprika|oregano|cinnamon|peppercorns?|vinegar|tahini|stock|broth|bouillon|canned|tinned|chickpeas?|garbanzo|lentils?|beans?|almonds?|walnuts?|cashews?|pecans?|sesame|cornstarch|corn ?starch|cornmeal|baking (soda|powder)|yeast|rice vinegar)\b/i, "Pantry & Dry Goods"],
+    [/\b(tomato(es)?|onions?|garlic|shallots?|(bell |red |green |chili |chilli )?peppers?|spinach|lettuce|romaine|kale|arugula|cucumbers?|carrots?|celery|eggplant|aubergine|zucchini|courgette|potato(es)?|sweet potato(es)?|yams?|broccoli|cauliflower|mushrooms?|lemons?|limes?|herbs?|parsley|cilantro|coriander|basil|mint|dill|scallions?|green onions?|leeks?|cabbage|avocados?|apples?|oranges?|berries|grapes?|corn|maize|asparagus|green beans?|snap peas?|peas?|beets?|radish(es)?|turnips?|fennel|chard|bok choy|brussels sprouts?|squash|butternut|pumpkin|ginger)\b/i, "Produce"]
+  ];
+  function categoryOf(name){
+    for (var i=0;i<CAT_RULES.length;i++){ if (CAT_RULES[i][0].test(name)) return CAT_RULES[i][1]; }
+    return "Other";
+  }
+  /* "<name>: <guidance>" or "<name> - <guidance>" -> [name, guidance], or null
+     for a prose sentence (name part too long) or a line with no separator. */
+  var NAME_GUIDANCE_RE = /^\s*([^\n]{1,44}?)\s*(?::\s+|\s[-–—]\s+)(\S.*)$/;
+  function splitNameGuidance(line){
+    var m = String(line == null ? "" : line).match(NAME_GUIDANCE_RE);
+    if (!m) return null;
+    var name = m[1].trim();
+    if (!name || name.split(/\s+/).length > 6) return null;
+    return [name, m[2].trim()];
+  }
+
+  var _CAT_LOOKUP = (function(){ var o = {}; CATEGORIES.forEach(function(c){ o[c.toLowerCase()] = c; }); return o; })();
+  var SUMMARY_RE = /^(estimated total|average cost per plate|dishes with no|ingredients with no|total\b)/i;
+
+  /* Parse a station reply into {sections:[[category,[lines]]...], loose:[lines]}.
+     derive=false: trust the agent's own "Category:" header lines (Shopping List).
+     derive=true : bucket each "name: guidance" line by keyword (Procurement). */
+  function parseCategorized(text, derive){
+    var lines = String(text||"").split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+    var sections = {}, loose = [], current = null;
+    lines.forEach(function(line){
+      if (SUMMARY_RE.test(line)){ loose.push(line); return; }
+      var bare = line.replace(/:\s*$/,"").trim().toLowerCase();
+      if (!derive && _CAT_LOOKUP[bare]){ current = _CAT_LOOKUP[bare]; if (!sections[current]) sections[current] = []; return; }
+      if (derive){
+        var ng = splitNameGuidance(line);
+        if (ng){ var cat = categoryOf(ng[0]); if (!sections[cat]) sections[cat] = []; sections[cat].push(line); return; }
+        loose.push(line); return;
+      }
+      if (current){ sections[current].push(line); } else { loose.push(line); }
+    });
+    var ordered = CATEGORIES.filter(function(c){ return sections[c] && sections[c].length; })
+                            .map(function(c){ return [c, sections[c]]; });
+    return { sections: ordered, loose: loose };
+  }
+
+  function looksLikeList(text){
+    var lines = String(text||"").split(/\r?\n/), n = 0;
+    for (var i=0;i<lines.length;i++){ if (splitNameGuidance(lines[i])) n++; }
+    return n >= 2;
+  }
+
+  function renderCategorized(target, text, derive){
+    var parsed = parseCategorized(text, derive);
+    if (!parsed.sections.length){ target.appendChild(el("div","prose", text)); return; }
+    var wrap = el("div","catcols");
+    parsed.sections.forEach(function(pair){
+      wrap.appendChild(el("div","cat", pair[0]));
+      pair[1].forEach(function(line){
+        var it = el("div","item"), ng = splitNameGuidance(line);
+        if (ng){
+          var idx = line.indexOf(ng[0]);
+          it.appendChild(document.createTextNode(line.slice(0, idx)));
+          it.appendChild(el("b","", ng[0]));
+          it.appendChild(document.createTextNode(line.slice(idx + ng[0].length)));
+        } else {
+          it.textContent = line;
+        }
+        wrap.appendChild(it);
+      });
+    });
+    target.appendChild(wrap);
+    if (parsed.loose.length){ target.appendChild(el("div","prose catfoot", parsed.loose.join("\n"))); }
+  }
+
+  /* ---------- recipe popup (Recipe & Portion dish names) ---------- */
+  var _recipeModal = null;
+  function ensureRecipeModal(){
+    if (_recipeModal) return _recipeModal;
+    var ov = el("div","rc-overlay"); ov.id = "rcOverlay";
+    var box = el("div","rc-box");
+    var close = el("button","rc-close","✕"); close.type = "button"; close.setAttribute("aria-label","Close");
+    var body = el("div","rc-body");
+    box.appendChild(close); box.appendChild(body); ov.appendChild(box);
+    ov.addEventListener("click", function(e){ if (e.target === ov) hideRecipe(); });
+    close.addEventListener("click", hideRecipe);
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape") hideRecipe(); });
+    document.body.appendChild(ov);
+    _recipeModal = { overlay: ov, body: body };
+    return _recipeModal;
+  }
+  function hideRecipe(){ if (_recipeModal) _recipeModal.overlay.classList.remove("show"); }
+
+  var _DISH_STOP = /\b(grilled|roasted|seared|sauteed|sautéed|baked|braised|fried|pan|stir|steamed|poached|smoked|charred|blackened|caramelized|whipped|mashed|pureed|crusted|herb|herbed|spiced|glazed|marinated|fresh|creamy|crispy|crisp|tender|juicy|homemade|classic|style|rustic|hearty|served|side|topped|drizzled|dressed|stuffed|rolled|wrapped|with|without|and|the|of|on|over|lemon|pepper|garlic|butter|honey|dijon|mustard|balsamic|citrus|soy|teriyaki|sesame|ginger|chili|chilli|paprika|rosemary|thyme|basil|parsley|cilantro|oregano|cinnamon|sauce|glaze|gravy|vinaigrette|dressing|crust|rub|marinade|bowl|plate|salad|pilaf|wild)\b/gi;
+  /* Field-label lines inside a dish entry -- never a dish name, never linked. */
+  var RECIPE_FIELD_RE = /^\s*(prep(aration)?|ingredients?|method|directions?|instructions?|steps?|serving(\s*size)?|serves|portions?|plate|yield|amounts?|notes?|nutrition|calories?|makes|day\s*\d+)\b/i;
+  /* Marker / note lines in a whole-menu writeup -- not dishes. */
+  var RECIPE_SKIP_RE = /^\s*(full[\s-]?service|dishes with no|no recipe data|here (is|are)|below)\b/i;
+  /* Leading "Day 3 - " / "1. " ordinal on a dish line. */
+  var RECIPE_LEAD_RE = /^\s*(?:day\s*\d+\s*[:\-–—.)]*\s*|\d+[.)]\s*)/i;
+  function dishTerms(name){
+    var base = String(name||"").split(/[,.;:(–—]/)[0].trim();
+    var core = base.replace(_DISH_STOP," ").replace(/[^A-Za-z\s-]/g," ").replace(/\s+/g," ").trim();
+    var terms = [];
+    if (base && base.split(/\s+/).length <= 6) terms.push(base);
+    if (core && core.toLowerCase() !== base.toLowerCase()) terms.push(core);
+    var first = core.split(" ").filter(Boolean)[0];   // the core identity noun, like the agent's _core_term
+    if (first && first.length >= 4) terms.push(first);
+    return terms.filter(function(t,i,a){ return t && a.indexOf(t) === i; });
+  }
+  /* Words >=4 chars, for checking a returned meal actually matches the dish. */
+  function _rcWords(s){ return String(s||"").toLowerCase().match(/[a-z]{4,}/g) || []; }
+  function _rcOverlap(a, b){ var wb = _rcWords(b); return _rcWords(a).some(function(w){ return wb.indexOf(w) !== -1; }); }
+
+  function openRecipe(name, recipeText, alreadyScaled){
+    var m = ensureRecipeModal();
+    m.overlay.classList.add("show");
+    m.body.innerHTML = "";
+    m.body.appendChild(el("div","rc-title", name));
+    if (recipeText && recipeText.trim()){
+      renderPortion(m.body, recipeText.trim(), alreadyScaled);
+      m.body.appendChild(el("div","rc-h","Reference recipe (TheMealDB)"));
+    }
+    var status = el("div","rc-status","Looking up “" + name + "” on TheMealDB…");
+    m.body.appendChild(status);
+    var terms = dishTerms(name), idx = 0;
+    function tryNext(){
+      if (idx >= terms.length){
+        status.textContent = "No matching recipe found on TheMealDB for “" + name + "”.";
+        var lk = document.createElement("a");
+        lk.href = "https://www.themealdb.com/"; lk.target = "_blank"; lk.rel = "noopener";
+        lk.className = "rc-src"; lk.textContent = "Browse TheMealDB →";
+        m.body.appendChild(lk);
+        return;
+      }
+      var term = terms[idx++];
+      fetch("https://www.themealdb.com/api/json/v1/1/search.php?s=" + encodeURIComponent(term))
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(data){
+          var meal = data && data.meals && data.meals[0];
+          if (!meal){ tryNext(); return; }
+          // Only accept a result whose name shares a real word with the
+          // dish (or the search term) -- otherwise a loose fallback term
+          // ("syrup", "carrots") pulls an unrelated recipe. Keep trying
+          // narrower terms; if the last one is still a loose match, show
+          // it but say so.
+          var confident = _rcOverlap(name, meal.strMeal) || _rcOverlap(term, meal.strMeal);
+          if (!confident && idx < terms.length){ tryNext(); return; }
+          renderMeal(m.body, status, meal, confident ? "" : "Closest name match on TheMealDB — this may not be the same dish.");
+        })
+        .catch(function(){ tryNext(); });
+    }
+    tryNext();
+  }
+
+  function renderMeal(body, status, meal, caveat){
+    if (status && status.parentNode) status.parentNode.removeChild(status);
+    if (caveat){ body.appendChild(el("div","rc-status", caveat)); }
+    if (meal.strMealThumb){
+      var im = document.createElement("img");
+      im.className = "rc-img"; im.src = meal.strMealThumb; im.alt = ""; im.loading = "lazy";
+      body.appendChild(im);
+    }
+    body.appendChild(el("div","rc-name", meal.strMeal || ""));
+    var meta = [meal.strCategory, meal.strArea].filter(Boolean).join("  ·  ");
+    if (meta) body.appendChild(el("div","rc-meta", meta));
+    var ings = [];
+    for (var i=1;i<=20;i++){
+      var ing = (meal["strIngredient" + i] || "").trim(), me = (meal["strMeasure" + i] || "").trim();
+      if (ing) ings.push((me ? me + " " : "") + ing);
+    }
+    if (ings.length){
+      body.appendChild(el("div","rc-h","Ingredients"));
+      var ul = document.createElement("ul"); ul.className = "rc-ings";
+      ings.forEach(function(x){ var li = document.createElement("li"); li.textContent = x; ul.appendChild(li); });
+      body.appendChild(ul);
+    }
+    if (meal.strInstructions){
+      body.appendChild(el("div","rc-h","Method"));
+      body.appendChild(el("div","rc-steps", meal.strInstructions));
+    }
+    var src = meal.strSource || ("https://www.themealdb.com/meal/" + meal.idMeal);
+    var a = document.createElement("a");
+    a.href = src; a.target = "_blank"; a.rel = "noopener"; a.className = "rc-src";
+    a.textContent = meal.strSource ? "Full recipe at source →" : "View on TheMealDB →";
+    body.appendChild(a);
+  }
+
+  function dishLinkEl(name, extraCls, recipeText, alreadyScaled){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "dishlink" + (extraCls ? " " + extraCls : "");
+    b.textContent = name;
+    b.title = "Show the recipe for “" + name + "”";
+    b.addEventListener("click", function(){ openRecipe(name, recipeText || "", !!alreadyScaled); });
+    return b;
+  }
+
+  /* ---------- serving scaling ---------- */
+  var _MASS = { g:1, gram:1, grams:1, gm:1, gms:1, kg:1000, kilo:1000, kilos:1000, kilogram:1000, kilograms:1000, mg:0.001 };
+  var _VOL  = { ml:1, milliliter:1, milliliters:1, millilitre:1, millilitres:1, l:1000, liter:1000, liters:1000, litre:1000, litres:1000 };
+  var _COUNT_UNIT = { tsp:1, tbsp:1, teaspoon:1, teaspoons:1, tablespoon:1, tablespoons:1, cup:1, cups:1, clove:1, cloves:1,
+                      slice:1, slices:1, sprig:1, sprigs:1, can:1, cans:1, stick:1, sticks:1, pinch:1, pinches:1, oz:1, ounce:1, ounces:1, lb:1, lbs:1, pound:1, pounds:1 };
+  function _fmtNum(v){ v = Math.round(v * 100) / 100; return String(v); }
+  var _SCALE_RE = /(\d+(?:\.\d+)?)(\s*)([A-Za-z]+)\b/g;
+  /* Multiply (or, with factor<1, divide) the ingredient quantities in a
+     recipe line. Only real food units are touched -- times ("3 min"),
+     temperatures ("400 F"), and dimensions ("1 inch") have no food unit
+     so they pass through, and a per-plate/per-serving figure is left as
+     written. */
+  function scaleRecipeText(text, factor){
+    if (!factor || factor === 1) return String(text || "");
+    return String(text || "").replace(_SCALE_RE, function(m, numStr, sp, unitRaw, off, whole){
+      var unit = unitRaw.toLowerCase();
+      var after = whole.slice(off + m.length, off + m.length + 18).toLowerCase();
+      if (/plate|bowl|per serving|serving size|portion size|per plate|per bowl|each/.test(after)) return m;
+      var v = parseFloat(numStr) * factor;
+      if (_MASS[unit] != null){
+        var g = v * _MASS[unit];
+        return g >= 1000 ? _fmtNum(g / 1000) + " kg" : _fmtNum(g) + " g";
+      }
+      if (_VOL[unit] != null){
+        var ml = v * _VOL[unit];
+        return ml >= 1000 ? _fmtNum(ml / 1000) + " L" : _fmtNum(ml) + " ml";
+      }
+      if (_COUNT_UNIT[unit] != null) return _fmtNum(v) + sp + unitRaw;
+      return m;
+    });
+  }
+  var _WORD_NUM = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
+    eleven:11, twelve:12, dozen:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17,
+    eighteen:18, nineteen:19, twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70,
+    eighty:80, ninety:90, hundred:100 };
+  var _SERV_UNIT = "people|persons?|servings?|diners?|guests?|lunches|meals?|covers|portions?|plates?|kids|children|students|staff|employees|adults|folks";
+  var _SERV_VERB = "serves?|serving|feeds?|feed|feeding|to feed|to serve|cook(?:ing)? for|make(?:s)? for|meals? for";
+  function currentServings(){
+    var t = (typeof state === "object" && state && state.lastCallText) || (callInput && callInput.value) || "";
+    var wn = "(" + Object.keys(_WORD_NUM).join("|") + ")";
+    var m = t.match(new RegExp("\\b(\\d{1,6})\\s*(?:" + _SERV_UNIT + ")\\b", "i"))
+         || t.match(new RegExp("\\b(?:" + _SERV_VERB + ")\\s+(\\d{1,6})\\b", "i"))
+         || t.match(new RegExp("\\bfor\\s+(\\d{2,6})\\b(?!\\s*(?:day|week|hour|dish|course))", "i"));
+    var n = m ? parseInt(m[1], 10) : NaN;
+    if (isNaN(n)){
+      var w = t.match(new RegExp("\\b" + wn + "\\s*(?:" + _SERV_UNIT + ")\\b", "i"))
+           || t.match(new RegExp("\\b(?:" + _SERV_VERB + "|for)\\s+" + wn + "\\b", "i"));
+      if (w) n = _WORD_NUM[w[1].toLowerCase()];
+    }
+    return (n >= 1 && n <= 100000) ? n : 450;
+  }
+  function renderPortion(host, recipeText, alreadyScaled){
+    var n = currentServings(), mode = "full";
+    var seg = el("div","rc-portion");
+    var tg = el("div","rc-toggle");
+    var bFull = el("button", "", "Full service ×" + n);
+    var bOne  = el("button", "", "Single serving");
+    bFull.type = bOne.type = "button";
+    var amt = el("div","rc-amounts");
+    function paint(){
+      var factor = (mode === "full") ? (alreadyScaled ? 1 : n) : (alreadyScaled ? 1 / n : 1);
+      amt.textContent = scaleRecipeText(recipeText, factor);
+      bFull.className = mode === "full" ? "on" : "";
+      bOne.className  = mode === "one"  ? "on" : "";
+    }
+    bFull.addEventListener("click", function(){ mode = "full"; paint(); });
+    bOne.addEventListener("click", function(){ mode = "one"; paint(); });
+    tg.appendChild(bFull); tg.appendChild(bOne);
+    seg.appendChild(tg); seg.appendChild(amt);
+    host.appendChild(seg);
+    paint();
+  }
+
+  /* One Nutrition line: "<dish>: <assessment>" with the dish name bold, plus
+     a sodium flag if the line carries an mg figure at/above the lunch target. */
+  function nutriLine(line, capRest){
+    var d = el("div","nutri-line");
+    var ci = line.indexOf(":");
+    if (ci > 0 && ci < 52){
+      d.appendChild(el("b","", line.slice(0, ci).trim()));
+      var rest = line.slice(ci + 1).trim();
+      if (capRest && rest.length > capRest) rest = rest.slice(0, capRest - 1) + "…";
+      d.appendChild(document.createTextNode(": " + rest));
+    } else {
+      d.textContent = capRest && line.length > capRest ? line.slice(0, capRest - 1) + "…" : line;
+    }
+    var na = line.match(/(\d[\d,]*)\s*mg/i);
+    var naVal = na ? parseInt(na[1].replace(/,/g,""),10) : 0;
+    if (naVal >= 800){
+      d.appendChild(el("span","flag crit","Na " + na[1] + " mg · " + (naVal >= 1000 ? "over 1,000" : "above lunch target")));
+    }
+    return d;
+  }
+
+  /* One Menu Optimization line with any leading / mid-line section heading
+     ("Ingredient Sharing:", "Cost Efficiency:", "Variety:") set in bold. */
+  var _OPT_HEAD_RE = /([A-Z][A-Za-z0-9&/'’-]*(?:[ ][A-Za-z0-9&/'’-]+){0,4}):(?=\s|$)/g;
+  var _OPT_SOLO_HEAD = /^(Variety|Cost|Waste|Reuse|Substitutions?|Summary|Overall|Recommendations?|Efficiency|Sharing|Complexity|Notes?|Sourcing)$/;
+  function optLine(line){
+    var d = el("div","opt-line");
+    _OPT_HEAD_RE.lastIndex = 0;
+    var m, last = 0;
+    while ((m = _OPT_HEAD_RE.exec(line)) !== null){
+      var phrase = m[1], words = phrase.split(" ");
+      var prev = m.index === 0 ? "" : line[m.index - 1];
+      var atBoundary = m.index === 0 || /[\s.;:—-]/.test(prev);
+      var titleish = /^[A-Z0-9&/]/.test(words[0]) &&
+        (words.every(function(w){ return /^[A-Z0-9&/(]/.test(w); }) || words.length <= 3);
+      var isHeading = atBoundary && words.length <= 5 &&
+        (words.length >= 2 ? titleish : _OPT_SOLO_HEAD.test(phrase));
+      if (!isHeading) continue;
+      if (m.index > last) d.appendChild(document.createTextNode(line.slice(last, m.index)));
+      d.appendChild(el("b","", phrase + ":"));
+      last = m.index + phrase.length + 1;
+    }
+    if (last < line.length) d.appendChild(document.createTextNode(line.slice(last)));
+    if (!d.childNodes.length) d.textContent = line;
+    return d;
+  }
+
+  /* ---------- rendering a station's reply ---------- */
+  var DECLINE_RE = /^\s*(?:I don'?t have|That'?s outside what I handle|This system has no)/i;
+
+  function splitDays(text){
+    var parts = [], re = /(?:^|\n)\s*Day\s*(\d+)\s*[:.)\-]\s*/gi, m, idxs = [];
+    while ((m = re.exec(text)) !== null){ idxs.push({ n:parseInt(m[1],10), start:m.index + m[0].length }); }
+    if (idxs.length < 2) return null;
+    for (var i=0;i<idxs.length;i++){
+      var end = (i+1 < idxs.length) ? text.lastIndexOf("\n", idxs[i+1].start) : text.length;
+      if (end < idxs[i].start) end = text.length;
+      var chunk = text.slice(idxs[i].start, end).trim().replace(/\s*\n\s*/g," ");
+      if (idxs[i].n >= 1 && idxs[i].n <= 5) parts[idxs[i].n - 1] = chunk;
+    }
+    return parts;
+  }
+  function imagesFromHtml(html){
+    if (!html) return [];
+    try{
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      return Array.prototype.map.call(doc.querySelectorAll("img"), function(im){ return im.getAttribute("src"); }).filter(Boolean);
+    }catch(e){ return []; }
+  }
+
+  function renderStation(s, text, html){
+    text = stripMeta(text);
+    s._produced = true;
+    s._text = (s._text ? s._text + "\n" : "") + text;
+    var declined = DECLINE_RE.test(text);
+    setLamp(s, declined ? "declined" : "done");
+    hideWorking(s);
+    /* Did Recipe & Portion already scale this reply to full service? (the
+       agent marks a batch writeup) -- the popup toggle then divides back
+       down for a single serving instead of multiplying up. */
+    if (s.key === "prep"){
+      s._scaled = /full[\s-]?service|quantities to prepare\s+\d+\s+servings|batch quantities|for\s+\d{2,5}\s+servings/i.test(text);
+    }
+
+    var days = s.perDay ? splitDays(text) : null;
+    var imgs = (s.key === "menu") ? imagesFromHtml(html) : [];
+
+    if (s.perDay && days){
+      for (var i=0;i<5;i++){
+        var c = s._cells[i]; c.className = "cell"; c.style.gridColumn = ""; c.innerHTML = "";
+        var body = (days[i] || "").trim();
+        if (!body){ c.className = "cell empty"; continue; }
+        c.appendChild(el("span","check","✓"));
+        if (s.key === "menu" && imgs[i]){
+          var p = el("span","plate"); var im = document.createElement("img"); im.src = imgs[i]; im.alt = ""; p.appendChild(im); c.appendChild(p);
+        }
+        var comma = body.indexOf(",");
+        if (s.key === "menu" && comma > 0 && comma < 60){
+          c.appendChild(el("span","dish", body.slice(0, comma)));
+          c.appendChild(el("span","sub", body.slice(comma + 1).trim()));
+        } else if (s.key === "prep"){
+          /* Recipe & Portion cells show ONLY the dish name -- the recipe
+             itself opens in the popup (click the link). */
+          var praw = body.replace(RECIPE_LEAD_RE, "");
+          var pn = praw.split(/[.;:]/)[0].split(",")[0].trim().slice(0,70);
+          c.appendChild(RECIPE_FIELD_RE.test(pn) ? el("span","dish", pn)
+            : dishLinkEl(pn, "dish", body, s._scaled));
+        } else if (s.key === "nutri"){
+          c.appendChild(nutriLine(body, 180));
+        } else {
+          var na = body.match(/(\d[\d,]*)\s*mg/i);
+          var dishName = body.split(/[.;]/)[0].slice(0,90);
+          c.appendChild(el("span","dish", dishName));
+          var naVal = na ? parseInt(na[1].replace(/,/g,""),10) : 0;
+          if (naVal >= 800){
+            c.appendChild(el("span","flag crit","Na " + na[1] + " mg · " + (naVal >= 1000 ? "over 1,000" : "above lunch target")));
+          }
+          if (body.length > 90) c.appendChild(el("span","sub", body.slice(0,220)));
+        }
+      }
+      return;
+    }
+
+    /* spanned cell (holistic stations, or per-day fallback) */
+    var target = s._cells[0];
+    if (s.perDay){
+      for (var k=1;k<5;k++){ s._cells[k].style.display = "none"; }
+      target.style.gridColumn = "2 / -1";
+    }
+    target.className = "cell span"; target.style.display = ""; target.innerHTML = "";
+    target.appendChild(el("span","check","✓"));
+    if (s.key === "shop"){
+      renderCategorized(target, text, false);
+    } else if (s.key === "proc"){
+      if (looksLikeList(text)) renderCategorized(target, text, true);
+      else target.appendChild(el("div","prose", text));
+    } else if (s.twoCol){
+      /* Recipe & Portion: the board shows ONLY the dish names (compact).
+         The agent emits one line per dish as "<dish name>: <amounts...>",
+         so a dish is exactly a line with a short name before a colon --
+         a field label ("Prep:", "Serving:"), a note ("Full service ...",
+         "Dishes with no recipe data ..."), or a wrapped fragment with no
+         colon is NOT a dish and is skipped (its text was folded into the
+         dish line by the agent). */
+      var list = el("div","dishnames");
+      String(text || "").split(/\r?\n/).forEach(function(ln){
+        var t = ln.trim().replace(RECIPE_LEAD_RE, "");
+        if (!t || RECIPE_SKIP_RE.test(t)) return;
+        var ci = t.indexOf(":");
+        if (ci < 1 || ci > 64) return;                 // no "Name: ..." -> not a dish line
+        var name = t.slice(0, ci).split(",")[0].trim().replace(/[.,;]+$/,"").slice(0,64);
+        if (!name || RECIPE_FIELD_RE.test(name)) return;
+        list.appendChild(dishLinkEl(name, "dishname", t, s._scaled));
+      });
+      if (!list.children.length){ target.appendChild(el("div","prose", text)); }
+      else target.appendChild(list);
+    } else if (s.key === "nutri"){
+      /* one line per dish, dish name bold */
+      var nb = el("div","nutri");
+      String(text || "").split(/\r?\n/).forEach(function(ln){
+        var t = ln.trim();
+        if (t) nb.appendChild(nutriLine(t));
+      });
+      target.appendChild(nb);
+    } else if (s.key === "opt"){
+      /* section headings in bold */
+      var ob = el("div","opt");
+      String(text || "").split(/\r?\n/).forEach(function(ln){
+        var t = ln.trim();
+        if (t) ob.appendChild(optLine(t));
+      });
+      target.appendChild(ob);
+    } else {
+      target.appendChild(el("div","prose", text));
+    }
+    /* From the html feature keep ONLY images (nutrition bar chart, shopping
+       cost chart, meal pics) -- the rest of these agents' html is just their
+       text reformatted as a list, which would print the whole thing twice. */
+    var charts = imagesFromHtml(html);
+    if (charts.length){
+      var gal = el("div","aihtml");
+      charts.forEach(function(src){
+        var im = document.createElement("img"); im.src = src; im.alt = ""; gal.appendChild(im);
+      });
+      target.appendChild(gal);
+    }
+  }
+
+
+  /* Sodium mg figures in a nutrition reply. Two passes: (1) a number tied
+     directly to "sodium"/"salt" with no digit or period between them (so a
+     "g" figure is only taken when it's genuinely a sodium figure, not
+     "44 g protein"); (2) any bare "NNN mg" -- an mg figure in a nutrition
+     assessment is sodium anyway (protein/fat/carbs are grams, calories are
+     kcal) -- skipping ones already caught in pass 1 and ones that are part
+     of a target/range phrase ("the 700-800 mg lunch target"). */
+  function sodiumFiguresMg(t){
+    var out = [], claimed = [], m;
+    var reNear = /(?:sodium|salt)[^\d.]{0,14}(\d[\d.,]*)\s*(mg|g)\b|(\d[\d.,]*)\s*(mg|g)\b[^\d.]{0,8}(?:of\s+)?(?:sodium|salt)/gi;
+    while ((m = reNear.exec(t)) !== null){
+      var n = parseFloat(String(m[1] || m[3]).replace(/,/g,""));
+      if (isNaN(n)) continue;
+      out.push((m[2] || m[4] || "mg").toLowerCase() === "g" ? n * 1000 : n);
+      claimed.push([m.index, m.index + m[0].length]);
+    }
+    var reMg = /(\d[\d.,]*)\s*mg\b/gi;
+    while ((m = reMg.exec(t)) !== null){
+      if (claimed.some(function(r){ return m.index >= r[0] && m.index <= r[1]; })) continue;
+      var pre = t.slice(Math.max(0, m.index - 22), m.index).toLowerCase();
+      if (/target|guideline|recommended|\d\s*[-–to]+\s*$|~\s*$/.test(pre)) continue;
+      var v = parseFloat(m[1].replace(/,/g,""));
+      if (!isNaN(v) && v >= 100 && v <= 6000) out.push(v);
+    }
+    return out;
+  }
+  /* The Nutrition agent flags sodium relative to a ~700-800 mg lunch
+     target, often in prose ("sodium runs high", "above the lunch target")
+     rather than as a >=1000 mg number -- so the KPI trips on either a
+     figure at/above 800 mg or that concern language, minus the reassuring
+     "within target" phrasings. */
+  var SOD_CONCERN_RE = /high[\s-]?sodium|sodium[^.]{0,50}\b(high(er|est)?|elevated|concern|risk|watch|reduc\w*|lower\w*|cut\w*|above|over|exceed\w*|too much|problem)\b|\b(high(er|est)?|elevated|excessive)\b[^.]{0,20}sodium|cumulative sodium|(reduc\w*|lower\w*|cut\w*|watch\w*)[^.]{0,20}salt|above the (lunch |sodium )?target/i;
+  var SOD_OK_RE = /\bsodium\b[^.]{0,60}\b(within|under|below|fine|low|moderate|reasonable|acceptable|on target|good range|healthy range|not a concern|no concern|isn'?t a concern)\b|no notable (nutrition|sodium)/i;
+
+  /* ---------- KPI best-effort scrape ---------- */
+  function refreshKpis(){
+    var shop = byKey("shop")._text || "", nutri = byKey("nutri")._text || "", inv = byKey("inv")._text || "";
+    var cost = shop.match(/(?:per[\s-]*plate|cost[\s-]*per[\s-]*plate)[^$]{0,20}\$([\d.,]+)/i) || shop.match(/\$([\d.,]+)\s*(?:\/|per)\s*plate/i);
+    setKpi("kpiCost","kpiCostChip", cost ? "$"+cost[1] : "—", cost ? ["On target","good"] : ["pending","muted"]);
+    var total = shop.match(/(?:estimated total|est\.?\s*total)[^$]{0,20}\$([\d.,]+)/i);
+    $("kpiTotal").textContent = total ? "$"+total[1] : "—";
+    var naOver = sodiumFiguresMg(nutri).filter(function(v){ return v >= 800; }).length;
+    var naConcern = SOD_CONCERN_RE.test(nutri) && !(SOD_OK_RE.test(nutri) && !naOver);
+    var naVal = naOver ? String(naOver) : (naConcern ? "⚠" : "0");
+    setKpi("kpiNa","kpiNaChip", nutri ? naVal : "—",
+      nutri ? ((naOver || naConcern) ? ["review","warn"] : ["all clear","good"]) : ["pending","muted"]);
+    var par = (inv.match(/below par/gi) || []).length;
+    setKpi("kpiPar","kpiParChip", inv ? String(par) : "—", inv ? (par ? ["order today","warn"] : ["covered","good"]) : ["pending","muted"]);
+  }
+  function setKpi(valId, chipId, val, chip){
+    $(valId).textContent = val;
+    var c = $(chipId); c.className = "chip " + chip[1]; c.textContent = chip[0];
+  }
+  function byKey(k){ for (var i=0;i<STATIONS.length;i++){ if (STATIONS[i].key === k) return STATIONS[i]; } return {}; }
+
+  /* ---------- transport ----------
+     Envelopes follow the Open Floor Inter-Agent Message Spec 1.0.0:
+     the mandatory schema / conversation / sender / events sections, and
+     each dialogEvent carries the mandatory id, speakerUri, span and
+     text feature. maxWords / routingMode are custom features (spec 1.11
+     explicitly permits arbitrary feature names; unknown ones are ignored). */
+  var ENVELOPE_SCHEMA = {
+    version: "1.0.0",
+    url: "https://github.com/open-voice-interoperability/docs/tree/main/schemas/conversation-envelope/1.0.0/conversation-envelope-schema.json"
+  };
+  function uid(){ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + "-" + Math.random().toString(16).slice(2)); }
+
+  function envelope(events){
+    return { openFloor: {
+      schema: ENVELOPE_SCHEMA,
+      conversation: { id: state.convId, conversants: [] },
+      sender: { speakerUri: state.clientUri, serviceUrl: state.clientUrl },
+      events: events
+    }};
+  }
+  function dialogEvent(textVal, roundRobin){
+    var features = {
+      text: { mimeType:"text/plain", tokens:[{ value:textVal }] },
+      maxWords: { mimeType:"text/plain", tokens:[{ value:"320" }] }
+    };
+    if (roundRobin) features.routingMode = { mimeType:"text/plain", tokens:[{ value:"round_robin" }] };
+    return {
+      id: "de:" + uid(),
+      speakerUri: state.clientUri,
+      span: { startTime: new Date().toISOString() },
+      features: features
+    };
+  }
+
+  function floorSend(events){
+    return fetch(gw("/api/floor/send"), {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ payload: envelope(events), timeoutMs: 20000 })
+    }).then(function(r){ return r.text().then(function(t){
+      if (!r.ok) throw new Error("HTTP " + r.status + " " + r.statusText + " " + t.slice(0,120));
+      return t ? JSON.parse(t) : {};
+    }); });
+  }
+
+  function floorStream(events, timeoutMs, onLine){
+    return fetch(gw("/api/floor/stream"), {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ payload: envelope(events), timeoutMs: timeoutMs })
+    }).then(function(r){
+      if (!r.ok || !r.body) return r.text().catch(function(){ return ""; }).then(function(t){
+        throw new Error("stream failed HTTP " + r.status + " " + String(t).slice(0,120));
+      });
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = "";
+      function pump(){
+        return reader.read().then(function(res){
+          if (res.value){
+            buf += dec.decode(res.value, { stream:true });
+            var nl;
+            while ((nl = buf.indexOf("\n")) !== -1){
+              var line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+              if (line){ try{ onLine(JSON.parse(line)); }catch(e){ /* skip */ } }
+            }
+          }
+          if (res.done){ var last = buf.trim(); if (last){ try{ onLine(JSON.parse(last)); }catch(e){} } return; }
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
+  /* ---------- open the line: invite convener + specialists ---------- */
+  function openLine(){
+    setExpo("starting up…", true);
+    var roster = [CONVENER].concat(STATIONS);
+    var chain = Promise.resolve();
+    roster.forEach(function(r){
+      chain = chain.then(function(){
+        return floorSend([{ eventType:"invite", to:{ serviceUrl:r.url } }]).then(function(){
+          logRow("Coordinator", "invited " + r.title);
+          var s = stationForUrl(r.url); if (s) setLamp(s, "idle", "Ready");
+        });
+      });
+    });
+    return chain.then(function(){
+      state.opened = true;
+      setExpo("ready — send a request", false);
+      logRow("Coordinator", "ready — " + STATIONS.length + " agents standing by");
+    }).catch(function(err){
+      showBanner("Couldn’t reach the coordinator. Is the gateway on :8090 and the cafeteria-ops stack running?  (" + err.message + ")");
+      setExpo("coordinator unreachable", false);
+      logRow("Coordinator", err.message, "err");
+    });
+  }
+
+  /* ---------- send a call (broadcast, or direct to one station) ---------- */
+  function sendCall(text, directStation){
+    if (state.running) return;
+    if (!state.opened){ showBanner("Not ready yet — give the invites a moment."); return; }
+    hideBanner();
+    state.running = true; callBtn.disabled = true;
+    state.lastRequest = text;
+    /* remember the servings count in the request for the recipe popup */
+    if (!directStation && /\d/.test(text)) state.lastCallText = text;
+
+    var wireText = text;
+    if (!directStation){
+      STATIONS.forEach(function(s){ setLamp(s, "idle", "Idle"); s._produced = false; s._text = ""; hideWorking(s); });
+      logRow("You", "“" + text + "”", "you");
+      setExpo("routing…", true);
+    } else {
+      /* prefix with the specialist's name -- the convener's detect_addressed_agent
+         routes that surgically to just that agent (ask_specific_agent). */
+      wireText = directStation.name + ", " + text;
+      logRow("You", "→ " + directStation.title + ": “" + text + "”", "you");
+      directStation._produced = false; directStation._text = "";
+      setLamp(directStation, "fire");
+      showWorking(directStation);
+    }
+
+    var ev = { eventType:"utterance", parameters:{ dialogEvent: dialogEvent(wireText, !directStation) } };
+
+    floorStream([ev], 360000, onStreamLine)
+      .catch(function(err){ logRow("Coordinator", err.message, "err"); showBanner(err.message); })
+      .then(function(){
+        state.running = false; callBtn.disabled = false;
+        STATIONS.forEach(function(s){ if (s._lamp && s._lamp.classList.contains("fire")) setLamp(s, s._produced ? "done" : "idle"); hideWorking(s); });
+        setExpo(state.opened ? "ready — send a request" : "coordinator unreachable", false);
+        refreshKpis();
+      });
+  }
+
+  function onStreamLine(line){
+    if (line.progress){
+      var pid = String(line.progress.serviceUrl || line.progress.speakerUri || "");
+      var s = stationForUrl(pid);
+      if (!s){
+        if (line.progress.status === "working" && /:8300(\/|$)/.test(pid)) setExpo("Coordinator — routing to the specialists", true);
+        return;
+      }
+      if (line.progress.status === "working"){ setLamp(s, "fire"); showWorking(s); }
+      else if (line.progress.status === "idle"){ setLamp(s, s._produced ? "done" : "idle"); hideWorking(s); }
+      return;
+    }
+    if (line.event){
+      var e = line.event, type = e.eventType;
+      if (type === "utterance"){
+        var dlg = e.parameters && e.parameters.dialogEvent ? e.parameters.dialogEvent : (e.dialogEvent || {});
+        var spk = dlg.speakerUri || e._floorManagerOrigin || "";
+        var st = stationForUrl(spk);
+        var f = dlg.features || {};
+        var txt = ((f.text && f.text.tokens) || []).map(function(t){ return t && t.value != null ? t.value : t; }).join(" ").trim();
+        var html = (f.html && f.html.tokens && f.html.tokens[0] && (f.html.tokens[0].value != null ? f.html.tokens[0].value : f.html.tokens[0])) || "";
+        /* A "floor holder" is a transient status ("checking the nutrition
+           levels"), not the answer -- show it as the agent's working note
+           and wait for the real reply. */
+        if (f.floorHolder){
+          if (st) showWorking(st, txt);
+          else setExpo(txt, true);
+          return;
+        }
+        if (!txt && !html) return;
+        if (st){
+          renderStation(st, txt, html);
+          logRow(st.title, (DECLINE_RE.test(txt) ? "↺ declined — returned to coordinator" : "✓ " + oneLine(txt)), DECLINE_RE.test(txt) ? "decline" : null);
+          refreshKpis();
+        } else {
+          logRow("Coordinator", oneLine(txt));
+        }
+        return;
+      }
+      if (type === "grantFloor" || type === "revokeFloor"){
+        var t2 = e.to || {};
+        var s2 = stationForUrl(t2.serviceUrl || t2.speakerUri);
+        if (s2 && type === "grantFloor"){ setLamp(s2, "fire"); showWorking(s2); }
+        if (s2 && type === "revokeFloor" && !s2._produced) hideWorking(s2);
+        logRow("Coordinator", type + " → " + ((s2 && s2.title) || (t2.serviceUrl || "")), "fire");
+        return;
+      }
+      if (type === "acceptInvite" || type === "publishManifests") return;
+      logRow("Coordinator", type);
+      return;
+    }
+    /* line.done -> handled in .then() */
+  }
+
+  function stripMeta(s){ return String(s || "").replace(/\n\n\[Write approximately[\s\S]*$/i, "").trim(); }
+  function oneLine(s){ s = stripMeta(s).replace(/\s+/g," ").trim(); return s.length > 90 ? s.slice(0,89) + "…" : s; }
+
+  function showBanner(msg){ banner.textContent = msg; banner.classList.add("show"); }
+  function hideBanner(){ banner.classList.remove("show"); }
+
+  /* ---------- wire up ---------- */
+  callForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    var t = callInput.value.trim(); if (t) sendCall(t, null);
+  });
+  $("newWeek").addEventListener("click", function(){
+    if (state.running) return;
+    state.convId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("conv-" + Date.now());
+    state.opened = false;
+    logRoll.innerHTML = "";
+    buildBoard();
+    ["kpiCost","kpiNa","kpiPar"].forEach(function(id){ $(id).textContent = "—"; });
+    ["kpiCostChip","kpiNaChip","kpiParChip"].forEach(function(id){ $(id).className = "chip muted"; $(id).textContent = "pending"; });
+    $("kpiTotal").textContent = "—";
+    openLine();
+  });
+
+  buildBoard();
+  openLine();
+})();
+</script>
+</body>
+</html>

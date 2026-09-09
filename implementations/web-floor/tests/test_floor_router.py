@@ -747,5 +747,81 @@ class OnEventTests(unittest.TestCase):
         self.assertEqual(len(executed), 1)
 
 
+class FloorHolderResumeTests(unittest.TestCase):
+    """When an agent returns a transient "floor holder" status instead of its
+    answer, the router streams that status via on_event immediately and
+    re-requests the finished answer with a resume event (which never enters
+    the routing table)."""
+
+    def setUp(self):
+        self.conv = ConversationState(conv_id="conv-1")
+        self.conv.add_conversant("tag:nutri", "http://localhost:8302/", "Nutrition")
+        self.conv.get_conversant("tag:nutri").floor_granted = True
+
+    @staticmethod
+    def _floor_holder_event():
+        return {
+            "eventType": "utterance",
+            "parameters": {"dialogEvent": {"speakerUri": "tag:nutri", "features": {
+                "text": {"tokens": [{"value": "checking the nutrition levels"}]},
+                "floorHolder": {"tokens": [{"value": "true"}]},
+            }}},
+        }
+
+    def test_floor_holder_is_streamed_live_then_the_answer_is_re_requested(self):
+        calls = []
+
+        def deliver(url, sent_env, timeout):
+            events = sent_env["openFloor"]["events"]
+            feats = ((events[0].get("parameters", {}) or {}).get("dialogEvent", {}) or {}).get("features", {}) or {}
+            is_resume = "resumeAfterFloorHolder" in feats
+            calls.append(("resume" if is_resume else "initial", url))
+            if is_resume:
+                self.assertEqual(feats["resumeAfterFloorHolder"]["tokens"][0]["value"], "conv-1")
+                return [utterance_event("640 kcal, 44g protein", "tag:nutri")]
+            return [self._floor_holder_event()]
+
+        seen = []
+        in_env = envelope("tag:human", [utterance_event("check nutrition", "tag:human")])
+        executed = router.process_envelope(
+            self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver, on_event=seen.append
+        )
+
+        # Exactly two deliveries to the agent: the question, then the resume.
+        self.assertEqual(calls, [("initial", "http://localhost:8302/"), ("resume", "http://localhost:8302/")])
+
+        # The floor holder was streamed live (on_event) but is NOT a finalized
+        # event -- it never re-enters the table.
+        streamed_holders = [
+            e for e in seen
+            if e.get("eventType") == "utterance"
+            and "floorHolder" in ((e.get("parameters", {}) or {}).get("dialogEvent", {}) or {}).get("features", {})
+        ]
+        self.assertEqual(len(streamed_holders), 1)
+        self.assertEqual(
+            streamed_holders[0]["parameters"]["dialogEvent"]["features"]["text"]["tokens"][0]["value"],
+            "checking the nutrition levels",
+        )
+        self.assertNotIn(streamed_holders[0], executed)
+
+        # The real answer is finalized normally; the floor holder text is not.
+        answer_texts = [
+            router._extract_utterance_text(e) for e in executed if e.get("eventType") == "utterance"
+        ]
+        self.assertIn("640 kcal, 44g protein", answer_texts)
+        self.assertNotIn("checking the nutrition levels", answer_texts)
+
+    def test_no_floor_holder_means_no_resume_request(self):
+        deliver = FakeDeliver(replies={
+            "http://localhost:8302/": [utterance_event("done", "tag:nutri")],
+        })
+        in_env = envelope("tag:human", [utterance_event("check nutrition", "tag:human")])
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+
+        # One delivery only -- the resume path is marker-gated.
+        self.assertEqual(len(deliver.calls), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
