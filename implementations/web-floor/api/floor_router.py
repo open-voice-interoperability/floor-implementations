@@ -393,11 +393,20 @@ def apply_local_state(conv: ConversationState, event: dict, sender_speaker_uri: 
             return []
         conversant = conv.add_conversant(speaker_uri or service_url, service_url or speaker_uri)
         # Spec default is floorGranted=True the moment a conversant is added
-        # (curation rule, section 2.2). This project deliberately reconciles
-        # that down to revoked immediately -- see base_strategy_agent.py's
+        # (curation rule, section 2.2). With a convener registered, this
+        # project deliberately reconciles that down to revoked immediately so
+        # the convener decides who speaks -- see base_strategy_agent.py's
         # _handle_invite for the matching agent-side deviation/rationale.
+        # With no convener, nobody would ever grant it back, so instead send
+        # an explicit grantFloor: agents that gate locally on grantFloor
+        # (base_strategy_agent.py) then agree with the router's state. A
+        # convener that registers later revokes everyone (see
+        # _revoke_all_on_convener_registration).
         conversant.floor_granted = True
-        return [{"eventType": REVOKE_FLOOR, "to": {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url}}]
+        to_conversant = {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url}
+        if conv.convener_speaker_uri:
+            return [{"eventType": REVOKE_FLOOR, "to": to_conversant}]
+        return [{"eventType": GRANT_FLOOR, "to": to_conversant, _TRUSTED_KEY: True}]
 
     if event_type == UNINVITE:
         target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
@@ -421,6 +430,8 @@ def apply_local_state(conv: ConversationState, event: dict, sender_speaker_uri: 
         target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
         if target:
             target.floor_granted = event_type == GRANT_FLOOR
+            if event_type == GRANT_FLOOR:
+                target.turn_capped = False
         return []
 
     if event_type == YIELD_FLOOR:
@@ -496,6 +507,20 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                     routing_mode=_extract_dialog_feature_value(event, "routingMode"),
                     max_words=int(_extract_dialog_feature_value(event, "maxWords") or 0),
                 )
+                if not conv.convener_speaker_uri:
+                    # No convener to hand the floor back after last round's
+                    # one-comment-per-turn cap -- restore it ourselves, before
+                    # this new question goes out, so capped specialists can
+                    # answer it. Explicit human/agent revokes are left alone.
+                    for capped in [c for c in conv.conversants.values() if c.turn_capped]:
+                        grant_event = {
+                            "eventType": GRANT_FLOOR,
+                            "to": {"speakerUri": capped.speaker_uri, "serviceUrl": capped.service_url},
+                        }
+                        grant_replies = deliver_and_collect(capped, grant_event, floor_manager_identity, conv, deliver, timeout, on_progress)
+                        apply_local_state(conv, grant_event, sender_speaker_uri)
+                        finalize(grant_event)
+                        queue.extend(grant_replies)
             elif not is_convener_sender:
                 conv.record_turn(sender_speaker_uri, sender_conversant.conversational_name, _extract_utterance_text(event))
 
@@ -534,6 +559,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                     }
                     revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv, deliver, timeout, on_progress)
                     apply_local_state(conv, revoke_event, sender_speaker_uri)
+                    sender_conversant.turn_capped = True
                     pending_self_revoke = revoke_event
                     queue.extend(revoke_replies)
 
@@ -624,7 +650,8 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             if event_type == ACCEPT_INVITE and not conv.convener_speaker_uri:
                 accepting_conversant = conv.get_conversant(sender_speaker_uri)
                 if accepting_conversant is not None:
-                    detect_convener_role(conv, accepting_conversant, floor_manager_identity, deliver, timeout)
+                    if detect_convener_role(conv, accepting_conversant, floor_manager_identity, deliver, timeout):
+                        queue.extend(_revoke_all_on_convener_registration(conv))
             finalize(event)
             continue
 
@@ -632,6 +659,20 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
         finalize(event)
 
     return executed
+
+
+def _revoke_all_on_convener_registration(conv: ConversationState) -> list:
+    """Conversants invited before any convener joined were granted the floor
+    (see apply_local_state's invite handling). Once a convener registers it
+    decides who speaks, so revoke everyone still holding the floor --
+    including the convener itself, matching the state they'd be in had the
+    convener been present when they were invited. Trusted: these are the
+    floor manager's own reconciliation, not something to delegate."""
+    return [
+        {"eventType": REVOKE_FLOOR, "to": {"speakerUri": c.speaker_uri, "serviceUrl": c.service_url}, _TRUSTED_KEY: True}
+        for c in conv.conversants.values()
+        if c.floor_granted
+    ]
 
 
 def detect_convener_role(conv: ConversationState, conversant, floor_manager_identity: dict, deliver, timeout: float) -> bool:

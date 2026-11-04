@@ -157,22 +157,104 @@ class NoConvenerUtteranceTests(unittest.TestCase):
         self.assertEqual(called_urls, {"http://localhost:8200/", "http://localhost:8206/", "http://localhost:8204/"})
 
 
+    def test_turn_capped_specialist_is_regranted_on_the_next_human_round(self):
+        # >2 specialists: a reply self-revokes its speaker (one comment per
+        # turn). With no convener to grant it back, the next human question
+        # must, or that specialist would be silent for the rest of the
+        # conversation. A specialist revoked some other way stays revoked.
+        self.conv.add_conversant("tag:funding", "http://localhost:8204/", "Funding Strategist")
+        self.conv.get_conversant("tag:market").floor_granted = True
+        deliver = FakeDeliver(replies={
+            "http://localhost:8200/": [utterance_event("TAM is $1B", "tag:market")],
+        })
+
+        router.process_envelope(self.conv, envelope("tag:human", [utterance_event("go", "tag:human")]), FLOOR_MANAGER_IDENTITY, deliver)
+        market = self.conv.get_conversant("tag:market")
+        self.assertFalse(market.floor_granted)
+        self.assertTrue(market.turn_capped)
+
+        executed = router.process_envelope(self.conv, envelope("tag:human", [utterance_event("again", "tag:human")]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        granted = [e["to"]["speakerUri"] for e in executed if e.get("eventType") == "grantFloor"]
+        self.assertEqual(granted, ["tag:market"])
+        self.assertFalse(self.conv.get_conversant("tag:skeptic").floor_granted)
+        market_replies = [
+            e for e in executed
+            if e.get("eventType") == "utterance"
+            and e["parameters"]["dialogEvent"]["speakerUri"] == "tag:market"
+        ]
+        self.assertEqual(len(market_replies), 1)
+
+
 class NoConvenerControlEventTests(unittest.TestCase):
     def setUp(self):
         self.conv = ConversationState(conv_id="conv-1")
 
-    def test_invite_adds_conversant_then_auto_revokes(self):
+    def test_invite_adds_conversant_and_grants_floor(self):
+        # No convener to grant the floor later, so the invitee keeps the
+        # spec-default floor -- and is told so explicitly, since agents like
+        # base_strategy_agent.py stay silent until they see a grantFloor.
         deliver = FakeDeliver()
         in_env = envelope(
             "tag:human",
             [{"eventType": "invite", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}}],
         )
 
-        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
+        executed = router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, deliver)
 
         conversant = self.conv.get_conversant("tag:market")
         self.assertIsNotNone(conversant)
-        self.assertFalse(conversant.floor_granted)  # reconciled down per project deviation
+        self.assertTrue(conversant.floor_granted)
+        self.assertEqual([e["eventType"] for e in executed], ["invite", "grantFloor"])
+        sent_types = [sent["openFloor"]["events"][0]["eventType"] for url, sent in deliver.calls if url == "http://localhost:8200/"]
+        self.assertEqual(sent_types, ["invite", "grantFloor"])
+
+    def test_invite_with_a_convener_registered_auto_revokes(self):
+        self.conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        self.conv.convener_speaker_uri = "tag:convener"
+        # Convener trivially approves whatever control event it's delegated.
+        deliver = FakeDeliver(replies={})
+
+        def approving_deliver(target_url, sent_envelope, timeout):
+            deliver(target_url, sent_envelope, timeout)
+            sent_event = sent_envelope["openFloor"]["events"][0]
+            if target_url == "http://localhost:8199/" and "roundHistory" in (sent_event.get("parameters") or {}):
+                return [{k: v for k, v in sent_event.items() if k != "parameters"}]
+            return []
+
+        in_env = envelope(
+            "tag:human",
+            [{"eventType": "invite", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}}],
+        )
+
+        router.process_envelope(self.conv, in_env, FLOOR_MANAGER_IDENTITY, approving_deliver)
+
+        self.assertFalse(self.conv.get_conversant("tag:market").floor_granted)
+
+    def test_convener_registering_later_revokes_earlier_invitees(self):
+        def deliver(target_url, sent_envelope, timeout):
+            event_type = sent_envelope["openFloor"]["events"][0]["eventType"]
+            if target_url == "http://localhost:8199/":
+                if event_type == "invite":
+                    return [{"eventType": "acceptInvite"}]
+                if event_type == "getManifests":
+                    return publish_manifests_reply(is_convener=True)
+            return []
+
+        router.process_envelope(self.conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
+        ]), FLOOR_MANAGER_IDENTITY, deliver)
+        self.assertTrue(self.conv.get_conversant("tag:market").floor_granted)
+
+        executed = router.process_envelope(self.conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:convener", "serviceUrl": "http://localhost:8199/"}},
+        ]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        self.assertEqual(self.conv.convener_speaker_uri, "tag:convener")
+        self.assertFalse(self.conv.get_conversant("tag:market").floor_granted)
+        self.assertFalse(self.conv.get_conversant("tag:convener").floor_granted)
+        revoked = [e["to"]["speakerUri"] for e in executed if e.get("eventType") == "revokeFloor"]
+        self.assertIn("tag:market", revoked)
 
     def test_invite_is_delivered_to_the_invitee(self):
         deliver = FakeDeliver()

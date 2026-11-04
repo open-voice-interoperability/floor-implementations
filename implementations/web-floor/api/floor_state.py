@@ -34,6 +34,9 @@ class ConversantState:
     floor_granted: bool = True  # spec default on join (see module docstring); reconciled by the router on invite
     is_convener: bool = False
     accepted: bool = False
+    # Set when the router's one-comment-per-turn cap revoked this conversant's
+    # floor; with no convener to grant it back, the next human round does.
+    turn_capped: bool = False
     joined_at: float = field(default_factory=time.time)
 
 
