@@ -204,7 +204,7 @@
   }
   .stn h3{
     margin:0; font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
-    letter-spacing:.06em; text-transform:uppercase; font-size:14px; line-height:1.05;
+    letter-spacing:.06em; text-transform:uppercase; font-size:17px; line-height:1.15;
   }
   .stn .agent{
     font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; font-weight:600;
@@ -213,8 +213,8 @@
   .stn .src{
     display:block; margin-top:4px;
     font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
-    font-size:9.5px; line-height:1.4; letter-spacing:.01em;
-    color:var(--ink-faint); max-width:150px;
+    font-size:14px; line-height:1.45; letter-spacing:.01em;
+    color:var(--ink); max-width:190px;
   }
   /* live "what this agent is working on" note (a floor-holder status) */
   .stn .working{
@@ -243,7 +243,7 @@
     border-radius:2px; cursor:pointer; align-self:flex-start;
   }
   .stn .avatar{
-    margin-top:4px; width:56px; height:56px; flex:none; overflow:hidden;
+    margin-top:4px; width:72px; height:72px; flex:none; overflow:hidden;
     border-radius:50%;
     border:1px solid color-mix(in srgb, var(--hue, var(--rule-strong)) 45%, var(--rule));
   }
@@ -446,6 +446,47 @@
     font-family:"Caveat","Comic Sans MS",cursive; font-size:17px; color:var(--ink-faint);
   }
 
+  /* add any other OpenFloor agent to the conversation, like web-floor's main page */
+  .guest-add{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:10px clamp(16px,3vw,30px);
+    border-bottom:1px solid var(--rule); background:var(--sheet-2);
+  }
+  .guest-add .lbl{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .guest-add select, .guest-add input{
+    border:0; border-bottom:1.5px solid var(--ink-soft); background:var(--sheet-2); color:var(--ink);
+    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif; font-size:13px;
+    padding:5px 2px; min-width:0;
+  }
+  .guest-add input{ flex:1 1 260px; }
+  .guest-add select:focus-visible, .guest-add input:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .guest-add .btn-ghost:disabled{ opacity:.5; cursor:progress; }
+
+  .guests{ border-bottom:1px solid var(--rule); }
+  .guests-title{
+    margin:0; padding:12px clamp(16px,3vw,30px) 8px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600; font-size:11px;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft);
+    border-bottom:2px solid var(--accent);
+  }
+  .guest{ display:grid; grid-template-columns:200px minmax(0,1fr); }
+  .guest + .guest{ border-top:1px solid var(--rule); }
+  .guest .stn{ position:static; border-right:1px solid var(--rule); --hue:var(--rule-strong); }
+  .stn .remove{
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint);
+    background:none; border:0; padding:0; cursor:pointer; text-align:left;
+  }
+  .stn .remove:hover{ color:var(--crit); }
+  @media (max-width:640px){
+    .guest{ grid-template-columns:1fr; }
+    .guest .stn{ border-right:0; border-bottom:1px solid var(--rule); }
+  }
+
   @media (max-width:640px){
     .kpis{ grid-template-columns:repeat(2,1fr); }
     .kpi:nth-child(2){ border-right:0; }
@@ -485,6 +526,15 @@
       <button type="submit" id="callBtn">Send</button>
     </form>
 
+    <form class="guest-add" id="guestForm" autocomplete="off">
+      <span class="lbl">Add an agent</span>
+      <select id="guestPick" aria-label="Known agents">
+        <option value="">Known agents&hellip;</option>
+      </select>
+      <input id="guestUrl" placeholder="or paste any OpenFloor agent URL" aria-label="Agent URL">
+      <button type="submit" class="btn-ghost" id="guestBtn">Invite</button>
+    </form>
+
     <div class="kpis" id="kpis">
       <div class="kpi"><span class="k-lbl">Cost / serving</span><span class="k-val" id="kpiCost">&mdash;</span><span class="chip muted" id="kpiCostChip">pending</span></div>
       <div class="kpi"><span class="k-lbl">Sodium flags</span><span class="k-val" id="kpiNa">&mdash;</span><span class="chip muted" id="kpiNaChip">pending</span></div>
@@ -495,6 +545,11 @@
     <div class="board-scroll">
       <div class="board" id="board" role="table" aria-label="Weekly plan by agent"></div>
     </div>
+
+    <section class="guests" id="guestsSec" hidden>
+      <h2 class="guests-title">Other agents on the floor</h2>
+      <div id="guestList"></div>
+    </section>
 
     <div class="legend">
       <span class="cap">status key &rarr;</span>
@@ -509,7 +564,7 @@
       <div class="log-roll" id="logRoll"></div>
     </details>
 
-    <footer id="footer">Same gateway, same event stream, same seven agents &mdash; this is just a different view.</footer>
+    <footer id="footer">Same gateway, same event stream, same agents &mdash; this is just a different view.</footer>
 
   </div>
 </div>
@@ -660,6 +715,8 @@
   var $ = function(id){ return document.getElementById(id); };
   var board = $("board"), logRoll = $("logRoll"), expo = $("expo"), expoNow = $("expoNow");
   var callForm = $("callForm"), callInput = $("callInput"), callBtn = $("callBtn"), banner = $("banner");
+  var guestForm = $("guestForm"), guestPick = $("guestPick"), guestUrl = $("guestUrl"), guestBtn = $("guestBtn");
+  var guestsSec = $("guestsSec"), guestList = $("guestList");
 
   /* ---------- theme ---------- */
   (function(){
@@ -1397,6 +1454,16 @@
         });
       });
     });
+    /* "New week" starts a fresh conversation -- bring the guests along. A
+       guest that can't rejoin doesn't hold up the planner. */
+    guests.forEach(function(g){
+      chain = chain.then(function(){
+        return joinGuest(g).catch(function(err){
+          setLamp(g, "declined", "Couldn’t join");
+          logRow(g.title, "couldn’t rejoin: " + err.message, "err");
+        });
+      });
+    });
     return chain.then(function(){
       state.opened = true;
       setExpo("ready — send a request", false);
@@ -1408,6 +1475,177 @@
     });
   }
 
+  /* ---------- guest agents: any other OpenFloor agent the user adds ----------
+     Mirrors web-floor's main page: pick a known agent or paste a URL, and it
+     joins this same conversation. Guests aren't part of the weekly plan, so
+     they get their own rows below the board instead of a station. */
+  var KNOWN_GUESTS = [
+    { url:"http://localhost:8767/",                              name:"Stella (local)" },
+    { url:"https://openvoice-stella.vercel.app/",                name:"Stella (Vercel)" },
+    { url:"http://localhost:8081/",                              name:"TimeAgent (local)" },
+    { url:"https://openvoice-time-agent.vercel.app/",            name:"TimeAgent (Vercel)" },
+    { url:"http://localhost:8768/verity/",                       name:"Verity (local)" },
+    { url:"https://secondassistant.pythonanywhere.com/verity/",  name:"Verity (PythonAnywhere)" },
+    { url:"http://localhost:8769/",                              name:"GeminiGeo (local)" }
+  ];
+  var guests = [];   /* { url, speakerUri, title, _lamp, _workEl, _cell, _row } */
+
+  KNOWN_GUESTS.forEach(function(k){
+    var o = document.createElement("option"); o.value = k.url; o.textContent = k.name; guestPick.appendChild(o);
+  });
+  guestPick.addEventListener("change", function(){ if (guestPick.value) guestUrl.value = guestPick.value; });
+
+  /* localhost / 127.0.0.1 / ::1 are the same machine -- agents rewrite their
+     own speakerUri from whichever name they were reached by. */
+  function normId(u){
+    return String(u || "").trim().toLowerCase().replace(/^agent:/, "").replace(/\/+$/, "")
+      .replace(/^(https?:\/\/)(?:127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?=[:\/]|$)/, "$1localhost");
+  }
+  function guestFor(u){
+    var n = normId(u); if (!n) return null;
+    for (var i = 0; i < guests.length; i++){
+      if (n === normId(guests[i].speakerUri) || n === normId(guests[i].url)) return guests[i];
+    }
+    return null;
+  }
+  function guestTo(g){ return { speakerUri:g.speakerUri, serviceUrl:g.url }; }
+  function knownGuestName(url){
+    var n = normId(url);
+    for (var i = 0; i < KNOWN_GUESTS.length; i++){ if (normId(KNOWN_GUESTS[i].url) === n) return KNOWN_GUESTS[i].name; }
+    return "";
+  }
+
+  /* Ask the agent itself for its name and speakerUri (sent straight to it,
+     not through the floor). The speakerUri matters: some agents (Verity's
+     is "openFloor:verity") don't use their URL as their identity, and the
+     floor manager and convener only recognize the agent's replies if the
+     invite names it. */
+  function fetchManifest(url){
+    return fetch(gw("/api/proxy-send"), {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ targetUrl:url, payload: envelope([{ eventType:"getManifests", to:{ serviceUrl:url } }]), timeoutMs:10000 })
+    }).then(function(r){ return r.json(); }).then(function(res){
+      var evs = (res && res.json && (res.json.openFloor || res.json.openfloor || {}).events) || [];
+      for (var i = 0; i < evs.length; i++){
+        if (evs[i].eventType !== "publishManifests") continue;
+        var m = (((evs[i].parameters || {}).servicingManifests) || [])[0] || {};
+        var id = m.identification || {};
+        return { name:id.conversationalName || "", speakerUri:id.speakerUri || "" };
+      }
+      return {};
+    }).catch(function(){ return {}; });
+  }
+
+  function buildGuestRow(g){
+    var row = el("div","guest");
+    var stn = el("div","stn");
+    var head = el("div",""); head.appendChild(el("h3","",g.title));
+    head.appendChild(el("span","agent", g.url.replace(/^https?:\/\//,"").replace(/\/+$/,"")));
+    stn.appendChild(head);
+    var lamp = el("span","lamp idle","Joining"); g._lamp = lamp; stn.appendChild(lamp);
+    var work = el("div","working"); work.hidden = true; g._workEl = work; stn.appendChild(work);
+
+    var askBtn = el("button","ask-open","↳ ask this agent"); askBtn.type = "button";
+    var askForm = document.createElement("form"); askForm.className = "ask";
+    var askIn = document.createElement("input"); askIn.placeholder = "direct question…"; askIn.setAttribute("aria-label","Direct question to " + g.title);
+    var askGo = document.createElement("button"); askGo.type = "submit"; askGo.textContent = "Ask";
+    askForm.appendChild(askIn); askForm.appendChild(askGo);
+    askBtn.addEventListener("click", function(){ askForm.classList.toggle("show"); if (askForm.classList.contains("show")) askIn.focus(); });
+    askForm.addEventListener("submit", function(ev){
+      ev.preventDefault();
+      var q = askIn.value.trim(); if (!q) return;
+      askIn.value = ""; askForm.classList.remove("show");
+      sendCall(q, g);
+    });
+    var rm = el("button","remove","× remove from floor"); rm.type = "button";
+    rm.addEventListener("click", function(){ removeGuest(g); });
+    stn.appendChild(askBtn); stn.appendChild(askForm); stn.appendChild(rm);
+    row.appendChild(stn);
+
+    var cell = el("div","cell empty"); g._cell = cell; row.appendChild(cell);
+    g._row = row;
+    guestList.appendChild(row);
+    guestsSec.hidden = false;
+  }
+
+  /* invite + grantFloor, as two sends: with a convener present the floor
+     manager revokes every new conversant's floor right after its invite, so
+     a grant in the same envelope would be undone by that revoke. */
+  function joinGuest(g){
+    setLamp(g, "idle", "Joining");
+    return floorSend([{ eventType:"invite", to:guestTo(g) }]).then(function(res){
+      logRow("Coordinator", "invited " + g.title);
+      ((res.openFloor || {}).events || []).forEach(function(e){ onStreamLine({ event:e }); });
+      return floorSend([{ eventType:"grantFloor", to:guestTo(g) }]);
+    }).then(function(){ if (!g._produced) setLamp(g, "idle", "Ready"); });
+  }
+
+  function addGuest(url){
+    url = String(url || "").trim();
+    if (!/^https?:\/\/\S+$/i.test(url)){ showBanner("Enter an agent URL starting with http:// or https://"); return; }
+    if (guestFor(url)){ showBanner("That agent is already on the floor."); return; }
+    if (stationForUrl(url) || normId(url) === normId(CONVENER.url)){ showBanner("That agent is already part of the planner."); return; }
+    if (!state.opened || state.running){ showBanner("Wait for the current request to finish, then add the agent."); return; }
+    hideBanner();
+    guestBtn.disabled = true;
+    fetchManifest(url).then(function(info){
+      var g = {
+        url: url,
+        speakerUri: info.speakerUri || url.replace(/\/+$/,""),
+        title: info.name || knownGuestName(url) || url.replace(/^https?:\/\//,"").replace(/\/+$/,"")
+      };
+      guests.push(g);
+      buildGuestRow(g);
+      return joinGuest(g).catch(function(err){
+        setLamp(g, "declined", "Couldn’t join");
+        logRow(g.title, "couldn’t join: " + err.message, "err");
+        showBanner("Couldn’t add " + g.title + " (" + err.message + ")");
+      });
+    }).then(function(){
+      guestBtn.disabled = false;
+      guestUrl.value = ""; guestPick.value = "";
+    });
+  }
+
+  function removeGuest(g){
+    if (state.running){ showBanner("Wait for the current request to finish, then remove the agent."); return; }
+    floorSend([{ eventType:"uninvite", to:guestTo(g) }]).catch(function(err){
+      logRow(g.title, "uninvite failed: " + err.message, "err");
+    }).then(function(){
+      guests = guests.filter(function(x){ return x !== g; });
+      if (g._row && g._row.parentNode) g._row.parentNode.removeChild(g._row);
+      guestsSec.hidden = guests.length === 0;
+      logRow("Coordinator", "removed " + g.title);
+    });
+  }
+
+  function renderGuest(g, text, html){
+    /* agents prefix replies with who they're answering ("<our uri>: ...") */
+    var prefix = state.clientUri + ":";
+    text = stripMeta(text);
+    if (text.indexOf(prefix) === 0) text = text.slice(prefix.length).trim();
+    g._produced = true;
+    setLamp(g, "done");
+    hideWorking(g);
+    var cell = g._cell;
+    cell.className = "cell";
+    cell.innerHTML = "";
+    if (text) cell.appendChild(el("div","prose", text));
+    var imgs = imagesFromHtml(html);
+    if (imgs.length){
+      var wrap = el("div","aihtml");
+      imgs.slice(0, 8).forEach(function(src){ var im = document.createElement("img"); im.src = src; im.alt = ""; im.loading = "lazy"; wrap.appendChild(im); });
+      cell.appendChild(wrap);
+    }
+    if (!text && !imgs.length) cell.appendChild(el("div","prose","(sent an HTML reply with no text)"));
+    logRow(g.title, "✓ " + oneLine(text || "HTML reply"));
+  }
+
+  guestForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    addGuest(guestUrl.value || guestPick.value);
+  });
+
   /* ---------- send a call (broadcast, or direct to one station) ---------- */
   function sendCall(text, directStation){
     if (state.running) return;
@@ -1418,11 +1656,17 @@
     /* remember the servings count in the request for the recipe popup */
     if (!directStation && /\d/.test(text)) state.lastCallText = text;
 
+    var isGuest = !!directStation && guests.indexOf(directStation) !== -1;
     var wireText = text;
     if (!directStation){
       STATIONS.forEach(function(s){ setLamp(s, "idle", "Idle"); s._produced = false; s._text = ""; hideWorking(s); });
+      guests.forEach(function(g){ setLamp(g, "idle", "Idle"); g._produced = false; });
       logRow("You", "“" + text + "”", "you");
       setExpo("routing…", true);
+    } else if (isGuest){
+      logRow("You", "→ " + directStation.title + ": “" + text + "”", "you");
+      directStation._produced = false;
+      setLamp(directStation, "fire");
     } else {
       /* prefix with the specialist's name -- the convener's detect_addressed_agent
          routes that surgically to just that agent (ask_specific_agent). */
@@ -1435,11 +1679,25 @@
 
     var ev = { eventType:"utterance", parameters:{ dialogEvent: dialogEvent(wireText, !directStation) } };
 
-    floorStream([ev], 360000, onStreamLine)
+    /* Guests get the floor back first: the convener revokes everyone but the
+       one specialist on a direct ask, and the floor manager's one-reply-per-
+       turn cap revokes a guest after it answers. A question to one guest goes
+       privately, so the specialists and the convener's routing stay out of it. */
+    var events = [];
+    if (isGuest){
+      events.push({ eventType:"grantFloor", to:guestTo(directStation) });
+      ev.to = { speakerUri:directStation.speakerUri, serviceUrl:directStation.url, private:true };
+    } else if (!directStation){
+      guests.forEach(function(g){ events.push({ eventType:"grantFloor", to:guestTo(g) }); });
+    }
+    events.push(ev);
+
+    floorStream(events, 360000, onStreamLine)
       .catch(function(err){ logRow("Coordinator", err.message, "err"); showBanner(err.message); })
       .then(function(){
         state.running = false; callBtn.disabled = false;
         STATIONS.forEach(function(s){ if (s._lamp && s._lamp.classList.contains("fire")) setLamp(s, s._produced ? "done" : "idle"); hideWorking(s); });
+        guests.forEach(function(g){ if (g._lamp && g._lamp.classList.contains("fire")) setLamp(g, g._produced ? "done" : "idle"); });
         setExpo(state.opened ? "ready — send a request" : "coordinator unreachable", false);
         refreshKpis();
       });
@@ -1448,6 +1706,14 @@
   function onStreamLine(line){
     if (line.progress){
       var pid = String(line.progress.serviceUrl || line.progress.speakerUri || "");
+      var gp = guestFor(pid) || guestFor(line.progress.speakerUri);
+      if (gp){
+        /* lamp only -- every broadcast is delivered to guests too, and a
+           "working on it" log row for each of those would just be noise */
+        if (line.progress.status === "working") setLamp(gp, "fire");
+        else if (line.progress.status === "idle") setLamp(gp, gp._produced ? "done" : "idle");
+        return;
+      }
       var s = stationForUrl(pid);
       if (!s){
         if (line.progress.status === "working" && /:8300(\/|$)/.test(pid)) setExpo("Coordinator — routing to the specialists", true);
@@ -1462,10 +1728,16 @@
       if (type === "utterance"){
         var dlg = e.parameters && e.parameters.dialogEvent ? e.parameters.dialogEvent : (e.dialogEvent || {});
         var spk = dlg.speakerUri || e._floorManagerOrigin || "";
-        var st = stationForUrl(spk);
         var f = dlg.features || {};
         var txt = ((f.text && f.text.tokens) || []).map(function(t){ return t && t.value != null ? t.value : t; }).join(" ").trim();
         var html = (f.html && f.html.tokens && f.html.tokens[0] && (f.html.tokens[0].value != null ? f.html.tokens[0].value : f.html.tokens[0])) || "";
+        var gu = guestFor(spk);
+        if (gu){
+          if (f.floorHolder){ setLamp(gu, "fire"); return; }
+          if (txt || html) renderGuest(gu, txt, html);
+          return;
+        }
+        var st = stationForUrl(spk);
         /* A "floor holder" is a transient status ("checking the nutrition
            levels"), not the answer -- show it as the agent's working note
            and wait for the real reply. */
@@ -1486,10 +1758,11 @@
       }
       if (type === "grantFloor" || type === "revokeFloor"){
         var t2 = e.to || {};
-        var s2 = stationForUrl(t2.serviceUrl || t2.speakerUri);
+        var g2 = guestFor(t2.speakerUri) || guestFor(t2.serviceUrl);
+        var s2 = g2 ? null : stationForUrl(t2.serviceUrl || t2.speakerUri);
         if (s2 && type === "grantFloor"){ setLamp(s2, "fire"); showWorking(s2); }
         if (s2 && type === "revokeFloor" && !s2._produced) hideWorking(s2);
-        logRow("Coordinator", type + " → " + ((s2 && s2.title) || (t2.serviceUrl || "")), "fire");
+        logRow("Coordinator", type + " → " + ((s2 && s2.title) || (g2 && g2.title) || (t2.serviceUrl || "")), "fire");
         return;
       }
       if (type === "acceptInvite" || type === "publishManifests") return;
@@ -1516,6 +1789,7 @@
     state.opened = false;
     logRoll.innerHTML = "";
     buildBoard();
+    guests.forEach(function(g){ g._produced = false; g._cell.className = "cell empty"; g._cell.innerHTML = ""; });
     ["kpiCost","kpiNa","kpiPar"].forEach(function(id){ $(id).textContent = "—"; });
     ["kpiCostChip","kpiNaChip","kpiParChip"].forEach(function(id){ $(id).className = "chip muted"; $(id).textContent = "pending"; });
     $("kpiTotal").textContent = "—";
