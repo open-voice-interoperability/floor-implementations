@@ -516,7 +516,7 @@
 
     <div class="expo" id="expo" data-idle="1">
       <span class="beacon" aria-hidden="true"></span>
-      <span class="tag">Coordinator</span>
+      <span class="tag">Convener</span>
       <span class="now" id="expoNow">starting up&hellip;</span>
     </div>
 
@@ -556,7 +556,7 @@
       <span class="item"><span class="lamp idle">Idle</span> not started</span>
       <span class="item"><span class="lamp fire">Working</span> working now</span>
       <span class="item"><span class="lamp done">Done</span> reply posted</span>
-      <span class="item"><span class="lamp declined">Out of scope</span> declined &mdash; returned to the coordinator</span>
+      <span class="item"><span class="lamp declined">Out of scope</span> declined &mdash; returned to the convener</span>
     </div>
 
     <details class="log" open>
@@ -598,7 +598,7 @@
 
   /* ---------- roster ---------- */
   var HOST = "127.0.0.1";
-  var CONVENER = { key:"expo", url:"http://"+HOST+":8300/", title:"Coordinator" };
+  var CONVENER = { key:"expo", url:"http://"+HOST+":8300/", title:"Convener" };
   var STATIONS = [
     { key:"menu",  url:"http://"+HOST+":8301/", title:"Menu Designer",       agent:"menu designer",     name:"Menu Designer",                 hue:"--st-menu",   perDay:true  },
     { key:"prep",  url:"http://"+HOST+":8303/", title:"Recipe & Portion",    agent:"recipe & portion",  name:"Recipe & Portion Specialist",   hue:"--st-recipe", perDay:true,  twoCol:true },
@@ -1449,7 +1449,7 @@
     roster.forEach(function(r){
       chain = chain.then(function(){
         return floorSend([{ eventType:"invite", to:{ serviceUrl:r.url } }]).then(function(){
-          logRow("Coordinator", "invited " + r.title);
+          logRow("Convener", "invited " + r.title);
           var s = stationForUrl(r.url); if (s) setLamp(s, "idle", "Ready");
         });
       });
@@ -1467,11 +1467,11 @@
     return chain.then(function(){
       state.opened = true;
       setExpo("ready — send a request", false);
-      logRow("Coordinator", "ready — " + STATIONS.length + " agents standing by");
+      logRow("Convener", "ready — " + STATIONS.length + " agents standing by");
     }).catch(function(err){
-      showBanner("Couldn’t reach the coordinator. Is the gateway on :8090 and the cafeteria-ops stack running?  (" + err.message + ")");
-      setExpo("coordinator unreachable", false);
-      logRow("Coordinator", err.message, "err");
+      showBanner("Couldn’t reach the convener. Is the gateway on :8090 and the cafeteria-ops stack running?  (" + err.message + ")");
+      setExpo("convener unreachable", false);
+      logRow("Convener", err.message, "err");
     });
   }
 
@@ -1574,7 +1574,7 @@
   function joinGuest(g){
     setLamp(g, "idle", "Joining");
     return floorSend([{ eventType:"invite", to:guestTo(g) }]).then(function(res){
-      logRow("Coordinator", "invited " + g.title);
+      logRow("Convener", "invited " + g.title);
       ((res.openFloor || {}).events || []).forEach(function(e){ onStreamLine({ event:e }); });
       return floorSend([{ eventType:"grantFloor", to:guestTo(g) }]);
     }).then(function(){ if (!g._produced) setLamp(g, "idle", "Ready"); });
@@ -1615,7 +1615,7 @@
       guests = guests.filter(function(x){ return x !== g; });
       if (g._row && g._row.parentNode) g._row.parentNode.removeChild(g._row);
       guestsSec.hidden = guests.length === 0;
-      logRow("Coordinator", "removed " + g.title);
+      logRow("Convener", "removed " + g.title);
     });
   }
 
@@ -1693,12 +1693,12 @@
     events.push(ev);
 
     floorStream(events, 360000, onStreamLine)
-      .catch(function(err){ logRow("Coordinator", err.message, "err"); showBanner(err.message); })
+      .catch(function(err){ logRow("Convener", err.message, "err"); showBanner(err.message); })
       .then(function(){
         state.running = false; callBtn.disabled = false;
         STATIONS.forEach(function(s){ if (s._lamp && s._lamp.classList.contains("fire")) setLamp(s, s._produced ? "done" : "idle"); hideWorking(s); });
         guests.forEach(function(g){ if (g._lamp && g._lamp.classList.contains("fire")) setLamp(g, g._produced ? "done" : "idle"); });
-        setExpo(state.opened ? "ready — send a request" : "coordinator unreachable", false);
+        setExpo(state.opened ? "ready — send a request" : "convener unreachable", false);
         refreshKpis();
       });
   }
@@ -1716,7 +1716,7 @@
       }
       var s = stationForUrl(pid);
       if (!s){
-        if (line.progress.status === "working" && /:8300(\/|$)/.test(pid)) setExpo("Coordinator — routing to the specialists", true);
+        if (line.progress.status === "working" && /:8300(\/|$)/.test(pid)) setExpo("Convener — routing to the specialists", true);
         return;
       }
       if (line.progress.status === "working"){ setLamp(s, "fire"); showWorking(s); }
@@ -1749,10 +1749,10 @@
         if (!txt && !html) return;
         if (st){
           renderStation(st, txt, html);
-          logRow(st.title, (DECLINE_RE.test(txt) ? "↺ declined — returned to coordinator" : "✓ " + oneLine(txt)), DECLINE_RE.test(txt) ? "decline" : null);
+          logRow(st.title, (DECLINE_RE.test(txt) ? "↺ declined — returned to convener" : "✓ " + oneLine(txt)), DECLINE_RE.test(txt) ? "decline" : null);
           refreshKpis();
         } else {
-          logRow("Coordinator", oneLine(txt));
+          logRow("Convener", oneLine(txt));
         }
         return;
       }
@@ -1762,11 +1762,11 @@
         var s2 = g2 ? null : stationForUrl(t2.serviceUrl || t2.speakerUri);
         if (s2 && type === "grantFloor"){ setLamp(s2, "fire"); showWorking(s2); }
         if (s2 && type === "revokeFloor" && !s2._produced) hideWorking(s2);
-        logRow("Coordinator", type + " → " + ((s2 && s2.title) || (g2 && g2.title) || (t2.serviceUrl || "")), "fire");
+        logRow("Convener", type + " → " + ((s2 && s2.title) || (g2 && g2.title) || (t2.serviceUrl || "")), "fire");
         return;
       }
       if (type === "acceptInvite" || type === "publishManifests") return;
-      logRow("Coordinator", type);
+      logRow("Convener", type);
       return;
     }
     /* line.done -> handled in .then() */
