@@ -47,11 +47,13 @@
     --shadow: 0 1px 0 rgba(255,255,255,.04), 0 24px 46px -24px rgba(0,0,0,.7);
   }
 
+  /* Every font size is in rem, so this one number sizes all the text. */
+  html{ font-size:120%; }
   *{ box-sizing:border-box; }
   body{
     margin:0; background:var(--wall); color:var(--ink);
     font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
-    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    font-size:0.875rem; line-height:1.5; -webkit-font-smoothing:antialiased;
   }
   .wall{ min-height:100vh; padding:clamp(14px, 3vw, 40px); }
   .sheet{
@@ -65,7 +67,7 @@
     padding:10px clamp(16px,3vw,30px);
     background:var(--chip-crit-bg); color:var(--crit);
     font-family:"Oswald","Arial Narrow",sans-serif;
-    font-size:12px; letter-spacing:.06em;
+    font-size:0.75rem; letter-spacing:.06em;
     border-bottom:1px solid var(--rule);
   }
   .banner.show{ display:block; }
@@ -78,28 +80,28 @@
   }
   .brand-kicker{
     font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
-    letter-spacing:.32em; text-transform:uppercase; font-size:11px;
+    letter-spacing:.32em; text-transform:uppercase; font-size:0.6875rem;
     color:var(--ink-soft); margin:0 0 -6px;
   }
   .brand-title{
     font-family:"Bebas Neue","Arial Narrow",sans-serif; font-weight:400;
-    letter-spacing:.04em; font-size:clamp(40px,8vw,68px);
+    letter-spacing:.04em; font-size:clamp(2.5rem,8vw,4.25rem);
     line-height:.9; margin:0; text-wrap:balance;
   }
   .form-fields{ display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap; }
   .field label{
     display:block; font-family:"Oswald","Arial Narrow",sans-serif;
-    font-size:9.5px; letter-spacing:.24em; text-transform:uppercase;
+    font-size:0.5938rem; letter-spacing:.24em; text-transform:uppercase;
     color:var(--ink-faint); margin-bottom:2px;
   }
   .field .val{
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:22px; font-weight:700;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:1.375rem; font-weight:700;
     line-height:1; border-bottom:2px solid var(--ink-soft); padding-bottom:3px;
     min-width:60px; display:block;
   }
   .btn-ghost{
     border:1.5px solid var(--rule-strong); background:transparent; color:var(--ink);
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:10px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.625rem;
     letter-spacing:.18em; text-transform:uppercase; padding:8px 12px;
     border-radius:2px; cursor:pointer; align-self:center;
   }
@@ -110,7 +112,7 @@
     background:var(--accent); color:var(--accent-ink);
     padding:9px clamp(16px,3vw,30px);
     font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
-    letter-spacing:.2em; text-transform:uppercase; font-size:11px;
+    letter-spacing:.2em; text-transform:uppercase; font-size:0.6875rem;
   }
   .expo .tag{ opacity:.75; }
   .expo .now{ letter-spacing:.12em; }
@@ -131,27 +133,47 @@
     border-bottom:1px solid var(--rule); background:var(--sheet-2);
   }
   .call .lbl{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.6875rem;
     letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft);
     white-space:nowrap;
   }
+  .call-field{ position:relative; flex:1 1 320px; min-width:0; display:flex; align-items:stretch; }
   .call input{
-    flex:1 1 320px; min-width:0; border:0; background:transparent;
+    flex:1 1 auto; min-width:0; border:0; background:transparent;
     border-bottom:2px solid var(--ink); color:var(--ink);
     font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
-    font-size:15px; font-weight:500;
+    font-size:0.9375rem; font-weight:500;
     padding:6px 2px;
   }
   .call input:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
   .call button{
     border:0; background:var(--accent); color:var(--accent-ink);
     font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
-    letter-spacing:.16em; text-transform:uppercase; font-size:11px;
+    letter-spacing:.16em; text-transform:uppercase; font-size:0.6875rem;
     padding:11px 18px; border-radius:2px; cursor:pointer; white-space:nowrap;
   }
   .call button:hover{ filter:brightness(1.06); }
   .call button:disabled{ opacity:.5; cursor:progress; }
   .call button:active{ transform:translateY(1px); }
+  /* the earlier-requests pulldown */
+  .call .hist-btn{
+    background:transparent; color:var(--ink-soft); border:0; border-bottom:2px solid var(--ink);
+    border-radius:0; padding:0 10px; font-size:0.875rem; letter-spacing:0;
+  }
+  .call .hist-btn:hover{ color:var(--ink); filter:none; }
+  .call .hist-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .call-hist{
+    position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:30;
+    margin:0; padding:4px 0; list-style:none; max-height:min(60vh, 22rem); overflow-y:auto;
+    background:var(--sheet); border:1px solid var(--rule-strong); box-shadow:var(--shadow); border-radius:2px;
+  }
+  .call-hist li{
+    padding:8px 12px; cursor:pointer; color:var(--ink); font-size:0.875rem; line-height:1.4;
+    border-bottom:1px solid var(--rule);
+  }
+  .call-hist li:last-child{ border-bottom:0; }
+  .call-hist li:hover, .call-hist li.active{ background:var(--sheet-2); }
+  .call-hist li.empty{ color:var(--ink-faint); cursor:default; }
 
   .kpis{ display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--rule); }
   .kpi{
@@ -160,17 +182,17 @@
   }
   .kpi:last-child{ border-right:0; }
   .kpi .k-lbl{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.5938rem;
     letter-spacing:.2em; text-transform:uppercase; color:var(--ink-faint);
   }
   .kpi .k-val{
-    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:34px;
+    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:2.125rem;
     line-height:.85; letter-spacing:.02em; font-variant-numeric:tabular-nums;
   }
-  .kpi .k-note{ font-size:11px; color:var(--ink-soft); }
+  .kpi .k-note{ font-size:0.6875rem; color:var(--ink-soft); }
   .chip{
     align-self:flex-start; font-family:"Oswald","Arial Narrow",sans-serif;
-    font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+    font-size:0.5938rem; letter-spacing:.14em; text-transform:uppercase;
     padding:3px 7px; border-radius:2px;
   }
   .chip.good{ background:var(--chip-good-bg); color:var(--good); }
@@ -186,7 +208,7 @@
   }
   .board > *{ border-bottom:1px solid var(--rule); border-right:1px solid var(--rule); }
   .col-head{
-    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:20px;
+    font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:1.25rem;
     letter-spacing:.1em; padding:8px 12px 5px; color:var(--ink-soft);
     border-bottom:2px solid var(--accent); background:var(--sheet);
     position:sticky; top:0;
@@ -194,7 +216,7 @@
   .corner{
     background:var(--sheet); border-bottom:2px solid var(--accent);
     position:sticky; top:0; left:0; z-index:3; padding:8px 12px 5px;
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; color:var(--ink-faint);
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:0.9375rem; color:var(--ink-faint);
   }
 
   .stn{
@@ -204,27 +226,27 @@
   }
   .stn h3{
     margin:0; font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600;
-    letter-spacing:.06em; text-transform:uppercase; font-size:17px; line-height:1.15;
+    letter-spacing:.06em; text-transform:uppercase; font-size:1.0625rem; line-height:1.15;
   }
   .stn .agent{
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; font-weight:600;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:0.9375rem; font-weight:600;
     color:var(--ink-faint); line-height:1;
   }
   .stn .src{
     display:block; margin-top:4px;
     font-family:"Libre Franklin", system-ui, -apple-system, sans-serif;
-    font-size:14px; line-height:1.45; letter-spacing:.01em;
+    font-size:0.875rem; line-height:1.45; letter-spacing:.01em;
     color:var(--ink); max-width:190px;
   }
   /* live "what this agent is working on" note (a floor-holder status) */
   .stn .working{
     font-family:"Caveat","Comic Sans MS",cursive;
-    font-size:20px; line-height:1.2; color:var(--accent);
+    font-size:1.25rem; line-height:1.2; color:var(--accent);
     max-width:160px;
   }
   .stn .working::before{ content:"✎ "; opacity:.7; }
   .stn .ask-open{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.5938rem;
     letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);
     background:none; border:0; padding:0; cursor:pointer; text-align:left;
   }
@@ -234,11 +256,11 @@
   .stn form.ask input{
     border:0; border-bottom:1.5px solid var(--ink); background:transparent;
     color:var(--ink); font-family:"Caveat","Comic Sans MS",cursive;
-    font-size:15px; font-weight:600; padding:2px;
+    font-size:0.9375rem; font-weight:600; padding:2px;
   }
   .stn form.ask button{
     border:0; background:var(--accent); color:var(--accent-ink);
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.5625rem;
     letter-spacing:.12em; text-transform:uppercase; padding:5px 8px;
     border-radius:2px; cursor:pointer; align-self:flex-start;
   }
@@ -266,7 +288,7 @@
 
   .lamp{
     display:inline-flex; align-items:center; gap:6px;
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.5938rem;
     letter-spacing:.14em; text-transform:uppercase;
     padding:3px 7px 3px 6px; border-radius:2px;
     border:1px solid var(--rule-strong); width:max-content;
@@ -286,11 +308,11 @@
   }
   .cell.span{ grid-column:2 / -1; }
   .cell .dish{ font-weight:500; }
-  .cell .sub{ color:var(--ink-soft); font-size:13px; }
-  .cell .prose{ color:var(--ink-soft); font-size:13px; white-space:pre-wrap; max-width:70ch; }
+  .cell .sub{ color:var(--ink-soft); font-size:0.8125rem; }
+  .cell .prose{ color:var(--ink-soft); font-size:0.8125rem; white-space:pre-wrap; max-width:70ch; }
   .cell .prose b{ color:var(--ink); font-weight:600; }
   /* two-column flow for the list-shaped stations (recipe writeups) */
-  .cell .cols{ column-count:2; column-gap:26px; font-size:13px; color:var(--ink-soft); }
+  .cell .cols{ column-count:2; column-gap:26px; font-size:0.8125rem; color:var(--ink-soft); }
   .cell .cols .item{ break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 10px; }
   .cell .cols .item .itemhead{ display:block; font-weight:600; color:var(--ink); margin-bottom:2px; }
   .cell .cols .item .itemrest{ white-space:pre-wrap; }
@@ -298,18 +320,18 @@
 
   /* category-grouped flow (procurement, shopping list): bold full-width
      category bands, items in two columns beneath each */
-  .cell .catcols{ column-count:2; column-gap:26px; font-size:13px; color:var(--ink-soft); }
+  .cell .catcols{ column-count:2; column-gap:26px; font-size:0.8125rem; color:var(--ink-soft); }
   .cell .catcols .cat{
     column-span:all; -webkit-column-span:all;
     font-family:"Oswald","Arial Narrow",sans-serif; font-weight:700;
-    letter-spacing:.08em; text-transform:uppercase; font-size:11px;
+    letter-spacing:.08em; text-transform:uppercase; font-size:0.6875rem;
     color:var(--ink); margin:12px 0 5px; padding-bottom:2px;
     border-bottom:1px solid var(--rule);
   }
   .cell .catcols .cat:first-child{ margin-top:0; }
   .cell .catcols .item{ break-inside:avoid; -webkit-column-break-inside:avoid; white-space:pre-wrap; margin:0 0 5px; }
   .cell .catcols .item b{ color:var(--ink); font-weight:600; }
-  .cell .catfoot{ margin-top:10px; color:var(--ink); font-weight:600; font-size:12.5px; white-space:pre-wrap; }
+  .cell .catfoot{ margin-top:10px; color:var(--ink); font-weight:600; font-size:0.7812rem; white-space:pre-wrap; }
   @media (max-width:780px){ .cell .catcols{ column-count:1; } }
 
   /* dish name -> clickable, opens the recipe popup */
@@ -322,17 +344,17 @@
   .dishlink:hover, .dishlink:focus-visible{ color:var(--accent); text-decoration-color:var(--accent); }
   .cell .dish.dishlink{ font-weight:500; }
   /* compact dish-name list (Recipe & Portion whole-menu cell) */
-  .cell .dishnames{ display:flex; flex-direction:column; gap:6px; font-size:13px; }
+  .cell .dishnames{ display:flex; flex-direction:column; gap:6px; font-size:0.8125rem; }
   .cell .dishnames .dishname{ font-weight:500; color:var(--ink); }
 
   /* Nutrition: one line per dish, dish name in bold */
-  .cell .nutri{ display:flex; flex-direction:column; gap:7px; font-size:13px; color:var(--ink-soft); }
+  .cell .nutri{ display:flex; flex-direction:column; gap:7px; font-size:0.8125rem; color:var(--ink-soft); }
   .cell .nutri-line{ white-space:pre-wrap; }
   .cell .nutri-line b{ color:var(--ink); font-weight:600; }
   .cell .nutri-line .flag{ display:inline-block; margin:3px 0 0; }
 
   /* Menu Optimization: section headings ("Ingredient Sharing:", "Cost Efficiency:") in bold */
-  .cell .opt{ display:flex; flex-direction:column; gap:7px; font-size:13px; color:var(--ink-soft); max-width:74ch; }
+  .cell .opt{ display:flex; flex-direction:column; gap:7px; font-size:0.8125rem; color:var(--ink-soft); max-width:74ch; }
   .cell .opt-line{ white-space:pre-wrap; }
   .cell .opt-line b{ color:var(--ink); font-weight:600; }
 
@@ -351,50 +373,53 @@
   }
   .rc-close{
     position:absolute; top:8px; right:10px; border:0; background:transparent;
-    color:var(--ink-soft); font-size:16px; line-height:1; padding:4px; cursor:pointer;
+    color:var(--ink-soft); font-size:1rem; line-height:1; padding:4px; cursor:pointer;
   }
   .rc-close:hover{ color:var(--accent); }
   .rc-title{
     font-family:"Oswald","Arial Narrow",sans-serif; text-transform:uppercase;
-    letter-spacing:.12em; font-size:11px; color:var(--ink-faint);
+    letter-spacing:.12em; font-size:0.6875rem; color:var(--ink-faint);
   }
-  .rc-status{ color:var(--ink-soft); font-size:13px; margin-top:8px; }
+  .rc-status{ color:var(--ink-soft); font-size:0.8125rem; margin-top:8px; }
   .rc-portion{ margin-top:10px; }
   .rc-toggle{ display:flex; gap:6px; margin:0 0 8px; }
   .rc-toggle button{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:10px; letter-spacing:.08em;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.625rem; letter-spacing:.08em;
     text-transform:uppercase; padding:5px 9px; border-radius:2px; cursor:pointer;
     border:1px solid var(--rule-strong); background:transparent; color:var(--ink-soft);
   }
   .rc-toggle button.on{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
-  .rc-amounts{ font-size:13px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
+  .rc-amounts{ font-size:0.8125rem; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
   .rc-img{ width:100%; max-height:220px; object-fit:cover; border-radius:4px; margin:12px 0; }
-  .rc-name{ font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:26px; letter-spacing:.02em; }
-  .rc-meta{ color:var(--ink-soft); font-size:12px; margin-bottom:6px; }
+  .rc-name{ font-family:"Bebas Neue","Arial Narrow",sans-serif; font-size:1.625rem; letter-spacing:.02em; }
+  .rc-meta{ color:var(--ink-soft); font-size:0.75rem; margin-bottom:6px; }
   .rc-h{
     font-family:"Oswald","Arial Narrow",sans-serif; text-transform:uppercase;
-    letter-spacing:.14em; font-size:10px; color:var(--accent); margin:14px 0 5px;
+    letter-spacing:.14em; font-size:0.625rem; color:var(--accent); margin:14px 0 5px;
   }
-  .rc-ings{ margin:0; padding-left:18px; font-size:13px; color:var(--ink-soft); display:grid; gap:2px; }
-  .rc-steps{ font-size:13px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
+  .rc-ings{ margin:0; padding-left:18px; font-size:0.8125rem; color:var(--ink-soft); display:grid; gap:2px; }
+  .rc-steps{ font-size:0.8125rem; color:var(--ink-soft); white-space:pre-wrap; line-height:1.6; }
   .rc-src{
-    display:inline-block; margin-top:14px; color:var(--accent); font-size:12px;
+    display:inline-block; margin-top:14px; color:var(--accent); font-size:0.75rem;
     text-decoration:none; border-bottom:1px solid currentColor;
   }
+  button.rc-ask{ background:none; border:0; border-bottom:1px solid currentColor; padding:0; margin-left:16px;
+    font:inherit; font-size:0.75rem; cursor:pointer; border-radius:0; }
+  .rc-plate{ font-size:0.8125rem; color:var(--ink-soft); margin-top:10px; }
   .cell .check{
     position:absolute; top:6px; right:9px;
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:19px; font-weight:700; color:var(--good);
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:1.1875rem; font-weight:700; color:var(--good);
   }
   .cell.empty{ background:var(--sheet-2); }
   .cell.empty::after{
     content:"–"; color:var(--ink-faint);
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:22px;
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:1.375rem;
   }
   .cell .aihtml{ margin-top:6px; display:flex; flex-wrap:wrap; gap:10px; }
   .cell .aihtml img{ max-width:260px; border-radius:6px; display:block; }
 
   .plate{
-    width:66px; height:66px; flex:none; border-radius:50%;
+    width:100px; height:100px; flex:none; border-radius:50%;
     border:2px solid #f6f1e6; background:#efe9db;
     box-shadow:0 3px 7px -2px rgba(20,24,18,.4), inset 0 0 0 1px rgba(0,0,0,.06);
     overflow:hidden;
@@ -402,10 +427,24 @@
   :root[data-theme="dark"] .plate{ border-color:#cdc7b7; }
   @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .plate{ border-color:#cdc7b7; } }
   .plate img, .plate svg{ display:block; width:100%; height:100%; object-fit:cover; }
+  button.plate{ padding:0; cursor:zoom-in; font:inherit; }
+  button.plate:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  /* a dish picture, opened large */
+  .pic-overlay{
+    position:fixed; inset:0; z-index:60; display:none; cursor:zoom-out;
+    align-items:center; justify-content:center; flex-direction:column; gap:12px;
+    padding:24px 16px; background:rgba(12,14,10,.82);
+  }
+  .pic-overlay.show{ display:flex; }
+  .pic-overlay img{
+    display:block; width:min(88vw, 72vh, 560px); height:auto; aspect-ratio:1/1; object-fit:cover;
+    border-radius:8px; box-shadow:0 18px 50px -12px rgba(0,0,0,.6);
+  }
+  .pic-overlay .pic-cap{ color:#f3efe4; font-size:0.9375rem; text-align:center; max-width:min(88vw, 560px); }
 
   .flag{
     align-self:flex-start; font-family:"Oswald","Arial Narrow",sans-serif;
-    font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    font-size:0.5938rem; letter-spacing:.1em; text-transform:uppercase;
     padding:2px 6px; border-radius:2px; font-variant-numeric:tabular-nums;
   }
   .flag.crit{ background:var(--chip-crit-bg); color:var(--crit); }
@@ -415,35 +454,55 @@
     padding:12px clamp(16px,3vw,30px);
     border-bottom:1px solid var(--rule); background:var(--sheet-2);
   }
-  .legend .item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); }
-  .legend .cap{ font-family:"Caveat","Comic Sans MS",cursive; font-size:15px; font-weight:600; color:var(--ink-faint); }
+  .legend .item{ display:flex; align-items:center; gap:7px; font-size:0.75rem; color:var(--ink-soft); }
+  .legend .cap{ font-family:"Caveat","Comic Sans MS",cursive; font-size:0.9375rem; font-weight:600; color:var(--ink-faint); }
 
   details.log{ border-bottom:1px solid var(--rule); }
   details.log summary{
     list-style:none; cursor:pointer; padding:12px clamp(16px,3vw,30px);
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.6875rem;
     letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft);
     display:flex; align-items:center; gap:10px;
   }
   details.log summary::-webkit-details-marker{ display:none; }
-  details.log summary::before{ content:"▸"; color:var(--accent); font-size:13px; }
+  details.log summary::before{ content:"▸"; color:var(--accent); font-size:0.8125rem; }
   details.log[open] summary::before{ content:"▾"; }
   .log-roll{
     padding:4px clamp(16px,3vw,30px) 18px; background:var(--sheet-2);
-    font-variant-numeric:tabular-nums; font-size:12.5px; line-height:1.7;
+    font-variant-numeric:tabular-nums; font-size:0.7812rem; line-height:1.7;
     max-height:280px; overflow-y:auto;
   }
   .log-roll .row{ display:flex; gap:14px; color:var(--ink-soft); border-bottom:1px dashed var(--rule); padding:2px 0; }
   .log-roll .row .t{ color:var(--ink-faint); flex:none; }
-  .log-roll .row .who{ font-family:"Oswald","Arial Narrow",sans-serif; letter-spacing:.06em; text-transform:uppercase; font-size:11px; flex:none; width:132px; }
+  .log-roll .row .who{ font-family:"Oswald","Arial Narrow",sans-serif; letter-spacing:.06em; text-transform:uppercase; font-size:0.6875rem; flex:none; width:132px; }
   .log-roll .row.fire .who{ color:var(--accent); }
   .log-roll .row.decline .msg{ color:var(--warn); }
   .log-roll .row.you .who{ color:var(--st-menu); }
   .log-roll .row.err .msg{ color:var(--crit); }
 
+  /* every OpenFloor event the floor manager processed: time / from / to / event */
+  .ev-roll{
+    padding:4px clamp(16px,3vw,30px) 18px; background:var(--sheet-2);
+    max-height:320px; overflow:auto;
+  }
+  .ev-table{ width:100%; border-collapse:collapse; font-size:0.7812rem; font-variant-numeric:tabular-nums; }
+  .ev-table th{
+    position:sticky; top:0; background:var(--sheet-2); text-align:left;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600; font-size:0.625rem;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--ink-faint);
+    padding:6px 10px 5px 0; border-bottom:1px solid var(--rule-strong);
+  }
+  .ev-table td{ padding:3px 10px 3px 0; border-bottom:1px dashed var(--rule); color:var(--ink-soft); vertical-align:top; }
+  .ev-table td.t{ color:var(--ink-faint); white-space:nowrap; }
+  .ev-table td.ev{ font-family:"Oswald","Arial Narrow",sans-serif; letter-spacing:.04em; color:var(--ink); white-space:nowrap; }
+  .ev-table tr.utterance td.ev{ color:var(--st-menu); }
+  .ev-table tr.grantFloor td.ev{ color:var(--good); }
+  .ev-table tr.revokeFloor td.ev{ color:var(--accent); }
+  .ev-table .note{ color:var(--ink-faint); }
+
   footer{
     padding:16px clamp(16px,3vw,30px) 22px;
-    font-family:"Caveat","Comic Sans MS",cursive; font-size:17px; color:var(--ink-faint);
+    font-family:"Caveat","Comic Sans MS",cursive; font-size:1.0625rem; color:var(--ink-faint);
   }
 
   /* add any other OpenFloor agent to the conversation, like web-floor's main page */
@@ -453,13 +512,13 @@
     border-bottom:1px solid var(--rule); background:var(--sheet-2);
   }
   .guest-add .lbl{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:11px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.6875rem;
     letter-spacing:.22em; text-transform:uppercase; color:var(--ink-soft);
     white-space:nowrap;
   }
   .guest-add select, .guest-add input{
     border:0; border-bottom:1.5px solid var(--ink-soft); background:var(--sheet-2); color:var(--ink);
-    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif; font-size:13px;
+    font-family:"Libre Franklin", system-ui, -apple-system, sans-serif; font-size:0.8125rem;
     padding:5px 2px; min-width:0;
   }
   .guest-add input{ flex:1 1 260px; }
@@ -469,7 +528,7 @@
   .guests{ border-bottom:1px solid var(--rule); }
   .guests-title{
     margin:0; padding:12px clamp(16px,3vw,30px) 8px;
-    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600; font-size:11px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-weight:600; font-size:0.6875rem;
     letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft);
     border-bottom:2px solid var(--accent);
   }
@@ -477,7 +536,7 @@
   .guest + .guest{ border-top:1px solid var(--rule); }
   .guest .stn{ position:static; border-right:1px solid var(--rule); --hue:var(--rule-strong); }
   .stn .remove{
-    font-family:"Oswald","Arial Narrow",sans-serif; font-size:9.5px;
+    font-family:"Oswald","Arial Narrow",sans-serif; font-size:0.5938rem;
     letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint);
     background:none; border:0; padding:0; cursor:pointer; text-align:left;
   }
@@ -510,6 +569,7 @@
         <div class="field"><label>Week of</label><span class="val" id="weekOf">&mdash;</span></div>
         <div class="field"><label>Diners</label><span class="val">450</span></div>
         <button class="btn-ghost" id="newWeek" type="button">New week</button>
+        <button class="btn-ghost" id="saveLog" type="button" title="Download this conversation as a plain-text file">Save log</button>
         <button class="btn-ghost" id="themeToggle" type="button">Dark</button>
       </div>
     </header>
@@ -522,7 +582,11 @@
 
     <form class="call" id="callForm" autocomplete="off">
       <span class="lbl">Today&rsquo;s request</span>
-      <input id="callInput" value="Plan a Mediterranean 5-day lunch menu for 450 &mdash; nutrition, sourcing, and a shopping list." aria-label="Planning request">
+      <div class="call-field">
+        <input id="callInput" value="Plan a Mediterranean 5-day lunch menu for 450 &mdash; nutrition, sourcing, and a shopping list." aria-label="Planning request">
+        <button type="button" class="hist-btn" id="callHistBtn" aria-label="Earlier requests" aria-haspopup="listbox" aria-expanded="false" title="Earlier requests">&#9662;</button>
+        <ul class="call-hist" id="callHist" role="listbox" aria-label="Earlier requests" hidden></ul>
+      </div>
       <button type="submit" id="callBtn">Send</button>
     </form>
 
@@ -562,6 +626,16 @@
     <details class="log" open>
       <summary>Activity log</summary>
       <div class="log-roll" id="logRoll"></div>
+    </details>
+
+    <details class="log">
+      <summary>Event log <span class="cap" id="evCount"></span></summary>
+      <div class="ev-roll">
+        <table class="ev-table" aria-label="OpenFloor events">
+          <thead><tr><th>Time</th><th>From</th><th>To</th><th>Event</th></tr></thead>
+          <tbody id="evBody"></tbody>
+        </table>
+      </div>
     </details>
 
     <footer id="footer">Same gateway, same event stream, same agents &mdash; this is just a different view.</footer>
@@ -717,6 +791,7 @@
   var callForm = $("callForm"), callInput = $("callInput"), callBtn = $("callBtn"), banner = $("banner");
   var guestForm = $("guestForm"), guestPick = $("guestPick"), guestUrl = $("guestUrl"), guestBtn = $("guestBtn");
   var guestsSec = $("guestsSec"), guestList = $("guestList");
+  var evBody = $("evBody"), evCount = $("evCount");
 
   /* ---------- theme ---------- */
   (function(){
@@ -751,9 +826,9 @@
       var lamp = el("span","lamp idle","Idle"); s._lamp = lamp; stn.appendChild(lamp);
       var work = el("div","working"); work.hidden = true; s._workEl = work; stn.appendChild(work);
 
-      var askBtn = el("button","ask-open","↳ ask this agent"); askBtn.type = "button";
+      var askBtn = el("button","ask-open","↳ ask this agent privately"); askBtn.type = "button";
       var askForm = document.createElement("form"); askForm.className = "ask";
-      var askIn = document.createElement("input"); askIn.placeholder = "direct question…"; askIn.setAttribute("aria-label","Direct question to " + s.title);
+      var askIn = document.createElement("input"); askIn.placeholder = "private question…"; askIn.setAttribute("aria-label","Private question to " + s.title);
       var askGo = document.createElement("button"); askGo.type = "submit"; askGo.textContent = "Ask";
       askForm.appendChild(askIn); askForm.appendChild(askGo);
       askBtn.addEventListener("click", function(){ askForm.classList.toggle("show"); if (askForm.classList.contains("show")) askIn.focus(); });
@@ -778,7 +853,7 @@
       } else {
         var span = el("div","cell span empty"); s._cells.push(span); frag.appendChild(span);
       }
-      s._produced = false;
+      s._produced = false; s._prepText = "";
     });
     board.appendChild(frag);
   }
@@ -844,6 +919,105 @@
     logRoll.scrollTop = logRoll.scrollHeight;
   }
   function pad(n){ return String(n).padStart(2,"0"); }
+
+  /* ---------- event log: every OpenFloor event, with from / to ---------- */
+  var evTotal = 0;
+  /* a speakerUri/serviceUrl -> the name people know it by */
+  function evName(uri){
+    if (!uri) return "—";
+    var n = normId(uri);
+    if (n === normId(state.clientUri)) return "You";
+    if (/floor-manager/i.test(uri)) return "Floor manager";
+    if (n === normId(CONVENER.url) || /:8300(\/|$)/.test(n)) return "Convener";
+    var g = guestFor(uri); if (g) return g.title;
+    var s = stationForUrl(uri); if (s) return s.title;
+    return String(uri).replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  }
+  /* Pass-Through events with no `to` go to every conversant. */
+  var EV_BROADCAST = { utterance:1, acceptInvite:1, declineInvite:1, bye:1, getManifests:1, publishManifests:1, yieldFloor:1 };
+  function evTo(e){
+    var to = e.to || {};
+    var who = to.speakerUri || to.serviceUrl;
+    if (e.eventType === "requestFloor"){
+      /* a request goes to the floor, which decides (or asks the convener);
+         its `to` says who the floor is FOR */
+      var forWho = who ? evName(who) : "";
+      var by = evName(e._floorManagerFrom || "");
+      return "Floor manager" + (forWho && forWho !== by ? " (for " + forWho + ")" : "");
+    }
+    if (who) return evName(who) + (to.private ? " (private)" : "");
+    return EV_BROADCAST[e.eventType] ? "Everyone" : "—";
+  }
+  function evLog(from, to, name, note){
+    var t = new Date();
+    var tr = document.createElement("tr"); tr.className = name;
+    tr.appendChild(el("td","t", pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()) + "." + String(t.getMilliseconds()).padStart(3,"0")));
+    tr.appendChild(el("td","", from));
+    tr.appendChild(el("td","", to));
+    var ev = el("td","ev", name);
+    if (note){ ev.appendChild(document.createTextNode(" ")); ev.appendChild(el("span","note", note)); }
+    tr.appendChild(ev);
+    evBody.appendChild(tr);
+    evTotal++; evCount.textContent = "(" + evTotal + ")";
+    var roll = evBody.closest(".ev-roll"); if (roll) roll.scrollTop = roll.scrollHeight;
+  }
+  /* One event the floor manager reports; _floorManagerFrom says who originated it. */
+  function evRecord(e){
+    if (!e || !e.eventType) return;
+    var dlg = (e.parameters && e.parameters.dialogEvent) || e.dialogEvent || {};
+    var from = e._floorManagerFrom || dlg.speakerUri || "";
+    /* a request the convener approved unchanged stays the sender's */
+    var note = e._floorManagerVia ? "(via " + evName(e._floorManagerVia) + ") " : "";
+    if (e.reason) note += "reason: “" + e.reason + "” ";
+    if (e.eventType === "utterance"){
+      var f = dlg.features || {};
+      var txt = ((f.text && f.text.tokens) || []).map(function(t){ return t && t.value != null ? t.value : t; }).join(" ");
+      if (f.floorHolder) note = "(status) ";
+      note += "“" + oneLine(txt) + "”";
+      if (!f.floorHolder) transcriptAdd(evName(from), evTo(e), txt, e._floorManagerVia ? evName(e._floorManagerVia) : "");
+    }
+    evLog(evName(from), evTo(e), e.eventType, note);
+  }
+
+  /* ---------- conversation log: every message in full, as plain text ---------- */
+  var transcript = [];
+  function transcriptAdd(from, to, text, via){
+    text = stripMeta(text);
+    if (!text) return;
+    transcript.push({ t: new Date(), from: from, to: to, via: via, text: text });
+  }
+  function stamp(d, withDate){
+    var hms = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    return withDate ? d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + hms : hms;
+  }
+  function transcriptText(){
+    var now = new Date();
+    var out = ["Cafeteria Ops Planner — conversation log",
+               "Conversation: " + state.convId,
+               "Saved: " + stamp(now, true),
+               "Messages: " + transcript.length, ""];
+    var day = "";
+    transcript.forEach(function(m){
+      var d = stamp(m.t, true).slice(0, 10);
+      if (d !== day){ day = d; out.push("--- " + d + " ---", ""); }
+      out.push("[" + stamp(m.t) + "] " + m.from + " → " + m.to + (m.via ? " (relayed by " + m.via + ")" : "") + ":");
+      String(m.text).replace(/\r\n?/g, "\n").split("\n").forEach(function(line){ out.push("    " + line); });
+      out.push("");
+    });
+    if (!transcript.length) out.push("(nothing has been said yet)");
+    return out.join("\r\n");
+  }
+  function saveTranscript(){
+    var d = new Date();
+    var name = "cafeteria-ops-log-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+             + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".txt";
+    var url = URL.createObjectURL(new Blob(["\ufeff" + transcriptText()], { type: "text/plain;charset=utf-8" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  function evRecordAll(res){ ((res && res.openFloor && res.openFloor.events) || []).forEach(evRecord); }
 
   /* ---------- grocery categories (mirrors shopping_list_agent.CATEGORIES) ---------- */
   var CATEGORIES = ["Produce","Meat & Poultry","Seafood","Dairy & Eggs","Grains & Bakery",
@@ -961,53 +1135,169 @@
     var terms = [];
     if (base && base.split(/\s+/).length <= 6) terms.push(base);
     if (core && core.toLowerCase() !== base.toLowerCase()) terms.push(core);
-    var first = core.split(" ").filter(Boolean)[0];   // the core identity noun, like the agent's _core_term
-    if (first && first.length >= 4) terms.push(first);
+    /* Last, the dish type on its own ("Beef Lasagne" -> "Lasagne"). Safe only
+       because every result must pass _rcMatches; a bare INGREDIENT
+       ("chicken", "beef", "salmon") is never searched -- TheMealDB's first
+       hits for those are unrelated dishes ("Grilled Chicken Breast" became
+       "Chicken Handi", "Beef Burger" became "Beef pho"). Same lesson as
+       recipe_portion_agent.py's _terms_from_slots. */
+    var words = core.split(" ").filter(Boolean);
+    if (words.length > 1 && words[words.length - 1].length >= 4) terms.push(words[words.length - 1]);
     return terms.filter(function(t,i,a){ return t && a.indexOf(t) === i; });
   }
-  /* Words >=4 chars, for checking a returned meal actually matches the dish. */
-  function _rcWords(s){ return String(s||"").toLowerCase().match(/[a-z]{4,}/g) || []; }
-  function _rcOverlap(a, b){ var wb = _rcWords(b); return _rcWords(a).some(function(w){ return wb.indexOf(w) !== -1; }); }
+  /* A dish's identifying words for matching: lowercase, 3+ letters,
+     singular, minus cooking methods and generic descriptors. Dish types
+     (salad, soup, wrap, sauce) and flavors are kept -- they're what tell
+     "Grilled Salmon" from "Salmon Avocado Salad". */
+  var _RC_IGNORE = /\b(grilled|roasted|roast|seared|sauteed|sautéed|baked|braised|fried|pan|stir|steamed|poached|smoked|charred|blackened|caramelized|crispy|crisp|fresh|creamy|tender|juicy|homemade|classic|style|rustic|hearty|served|with|without|and|the|for|of|on|over|in|spicy|mild|hot|easy|simple|quick|mini|house|signature|mixed|assorted|healthy|light|traditional|authentic|best|perfect)\b/gi;
+  function _rcWords(s){
+    var cleaned = String(s||"").replace(_RC_IGNORE, " ").toLowerCase();
+    return (cleaned.match(/[a-z]{3,}/g) || []).map(function(w){
+      return (w.length > 3 && /s$/.test(w) && !/ss$/.test(w)) ? w.slice(0, -1) : w;
+    }).filter(function(w, i, a){ return a.indexOf(w) === i; });
+  }
+  /* A returned meal matches the dish only if the two names share most of
+     their identifying words -- one shared ingredient isn't enough:
+     "Grilled Salmon" vs "Salmon Noodle Soup" shares 1 of 3 and is rejected. */
+  /* A recipe that adds a protein the dish doesn't have is a different dish
+     -- and the most misleading kind for nutrition and allergens ("Greek
+     Salad" is not "Chicken Quinoa Greek Salad"). */
+  var _RC_PROTEINS = ["chicken","beef","pork","lamb","turkey","duck","veal","goat","salmon","tuna","cod","fish",
+                      "shrimp","prawn","crab","lobster","squid","mussel","clam","oyster","sausage","bacon","ham",
+                      "chorizo","tofu","egg"];
+  function _rcMatches(dish, mealName){
+    var a = _rcWords(dish), b = _rcWords(mealName);
+    if (!a.length || !b.length) return false;
+    if (b.some(function(w){ return _RC_PROTEINS.indexOf(w) !== -1 && a.indexOf(w) === -1; })) return false;
+    var shared = a.filter(function(w){ return b.indexOf(w) !== -1; }).length;
+    var union = a.length + b.length - shared;
+    return shared > 0 && shared / union >= 0.5;
+  }
+
+  /* Recipe & Portion found no TheMealDB recipe for a dish and wrote one
+     itself (or the user asked it for a different one): that line says so,
+     and it IS the recipe the other agents are working from. Kept in sync by
+     hand with recipe_portion_agent.py's _AI_RECIPE_MARKER /
+     _REPLACEMENT_MARKER. */
+  var AI_RECIPE_RE = /AI-generated recipe \(not from TheMealDB\)/i;
+  var AI_RECIPE_LEAD_RE = /^[^:]*:\s*(?:Replacement recipe\s*--\s*)?AI-generated recipe \(not from TheMealDB\)\s*--\s*/i;
+  var REPLACEMENT_RE = /^\s*([^:\n]{1,64}):\s*Replacement recipe\b/i;
 
   function openRecipe(name, recipeText, alreadyScaled){
     var m = ensureRecipeModal();
     m.overlay.classList.add("show");
     m.body.innerHTML = "";
     m.body.appendChild(el("div","rc-title", name));
-    if (recipeText && recipeText.trim()){
-      renderPortion(m.body, recipeText.trim(), alreadyScaled);
+    var text = (recipeText || "").trim();
+    if (AI_RECIPE_RE.test(text)){
+      renderAiRecipe(m.body, text, alreadyScaled);
+      m.body.appendChild(replaceRecipeBtn(name));
+      return;
+    }
+    if (text){
+      renderPortion(m.body, text, alreadyScaled);
       m.body.appendChild(el("div","rc-h","Reference recipe (TheMealDB)"));
     }
     var status = el("div","rc-status","Looking up “" + name + "” on TheMealDB…");
     m.body.appendChild(status);
     var terms = dishTerms(name), idx = 0;
+    function done(){ if (text) m.body.appendChild(replaceRecipeBtn(name)); }
     function tryNext(){
       if (idx >= terms.length){
         status.textContent = "No matching recipe found on TheMealDB for “" + name + "”.";
-        var lk = document.createElement("a");
-        lk.href = "https://www.themealdb.com/"; lk.target = "_blank"; lk.rel = "noopener";
-        lk.className = "rc-src"; lk.textContent = "Browse TheMealDB →";
-        m.body.appendChild(lk);
+        var browse = document.createElement("a");
+        browse.href = "https://www.themealdb.com/"; browse.target = "_blank"; browse.rel = "noopener";
+        browse.className = "rc-src"; browse.textContent = "Browse TheMealDB →";
+        m.body.appendChild(browse);
+        done();
         return;
       }
       var term = terms[idx++];
       fetch("https://www.themealdb.com/api/json/v1/1/search.php?s=" + encodeURIComponent(term))
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(data){
-          var meal = data && data.meals && data.meals[0];
+          // Take the first result that's really the same dish (not merely
+          // sharing one ingredient -- see _rcMatches); never show a loose
+          // match as if it were the recipe. No match on any term -> say so.
+          var meals = (data && data.meals) || [];
+          var meal = null;
+          for (var i = 0; i < meals.length; i++){ if (_rcMatches(name, meals[i].strMeal)){ meal = meals[i]; break; } }
           if (!meal){ tryNext(); return; }
-          // Only accept a result whose name shares a real word with the
-          // dish (or the search term) -- otherwise a loose fallback term
-          // ("syrup", "carrots") pulls an unrelated recipe. Keep trying
-          // narrower terms; if the last one is still a loose match, show
-          // it but say so.
-          var confident = _rcOverlap(name, meal.strMeal) || _rcOverlap(term, meal.strMeal);
-          if (!confident && idx < terms.length){ tryNext(); return; }
-          renderMeal(m.body, status, meal, confident ? "" : "Closest name match on TheMealDB — this may not be the same dish.");
+          renderMeal(m.body, status, meal, "");
+          done();
         })
         .catch(function(){ tryNext(); });
     }
     tryNext();
+  }
+
+  /* An AI-written recipe laid out like any other: Ingredients (scalable,
+     like the portion amounts), then Method, then the plate size. */
+  function renderAiRecipe(body, text, alreadyScaled){
+    var prep = byKey("prep");
+    var rest = text.replace(AI_RECIPE_LEAD_RE, "");
+    var ing = (rest.match(/\bIngredients?\s*:\s*([\s\S]*?)(?=\s*\b(?:Method|Steps|Plate)\s*:|$)/i) || [])[1] || "";
+    var method = (rest.match(/\b(?:Method|Steps)\s*:\s*([\s\S]*?)(?=\s*\bPlate\s*:|$)/i) || [])[1] || "";
+    var plate = (rest.match(/\bPlate\s*:\s*([\s\S]*)$/i) || [])[1] || "";
+    body.appendChild(el("div","rc-status", (REPLACEMENT_RE.test(text) ? "Replacement recipe — " : "")
+      + "AI-generated by the " + (prep.title || "Recipe & Portion") + " Specialist, not from TheMealDB. "
+      + "Check amounts and allergens before using it."));
+    if (!ing && !method){ renderPortion(body, rest, alreadyScaled); return; }
+
+    var n = currentServings(), mode = "full";
+    body.appendChild(el("div","rc-h","Ingredients"));
+    var tg = el("div","rc-toggle");
+    var bFull = el("button", "", "Full service ×" + n), bOne = el("button", "", "Single serving");
+    bFull.type = bOne.type = "button";
+    tg.appendChild(bFull); tg.appendChild(bOne); body.appendChild(tg);
+    var ul = document.createElement("ul"); ul.className = "rc-ings"; body.appendChild(ul);
+    var items = ing.replace(/[.\s]+$/, "").split(/[,;](?![^(]*\))/).map(function(x){ return x.trim(); }).filter(Boolean);
+    function paint(){
+      var factor = (mode === "full") ? (alreadyScaled ? 1 : n) : (alreadyScaled ? 1 / n : 1);
+      ul.innerHTML = "";
+      items.forEach(function(x){ var li = document.createElement("li"); li.textContent = scaleRecipeText(x, factor); ul.appendChild(li); });
+      bFull.className = mode === "full" ? "on" : "";
+      bOne.className  = mode === "one"  ? "on" : "";
+    }
+    bFull.addEventListener("click", function(){ mode = "full"; paint(); });
+    bOne.addEventListener("click", function(){ mode = "one"; paint(); });
+    paint();
+    if (method){
+      body.appendChild(el("div","rc-h","Method"));
+      body.appendChild(el("div","rc-steps", method.trim()));
+    }
+    if (plate) body.appendChild(el("div","rc-plate", "Plate (one serving): " + plate.trim().replace(/\.$/, "")));
+  }
+
+  /* Don't like a recipe? Ask the Recipe & Portion Specialist for another one
+     -- by name, in the main box, so it's public: only that specialist
+     answers, and Nutrition, Procurement and Shopping List hear the new
+     ingredients. Pre-filled, not sent, so you can say what to change. */
+  function replaceRecipeBtn(name){
+    var prep = byKey("prep");
+    var b = el("button", "rc-src rc-ask", "Ask for a different recipe →");
+    b.type = "button";
+    b.title = "Asks the " + prep.title + " Specialist in public, so the other agents hear the new ingredients";
+    b.addEventListener("click", function(){
+      hideRecipe();
+      callInput.value = prep.name + ", please replace the recipe for “" + name + "” with a different one. ";
+      callInput.focus();
+      try { callInput.setSelectionRange(callInput.value.length, callInput.value.length); } catch(e){}
+    });
+    return b;
+  }
+
+  /* A replacement recipe takes the place of that dish's line in the
+     Recipe & Portion column; the rest of the week stays. */
+  function swapDishLine(prior, dish, line){
+    var key = dish.trim().toLowerCase(), done = false, out = [];
+    prior.split(/\r?\n/).forEach(function(ln){
+      var nm = ln.trim().replace(RECIPE_LEAD_RE, "").split(":")[0].trim().toLowerCase();
+      if (nm === key){ if (!done){ out.push(line); done = true; } return; }
+      out.push(ln);
+    });
+    if (!done) out.push(line);
+    return out.join("\n");
   }
 
   function renderMeal(body, status, meal, caveat){
@@ -1196,8 +1486,43 @@
     }catch(e){ return []; }
   }
 
+  /* A dish picture on the board: a round plate that opens the picture
+     large when clicked. */
+  function plateButton(src, caption){
+    var b = el("button","plate"); b.type = "button";
+    b.title = "Show the picture of “" + caption + "”";
+    b.setAttribute("aria-label", "Show the picture of " + caption);
+    var im = document.createElement("img"); im.src = src; im.alt = ""; b.appendChild(im);
+    b.addEventListener("click", function(){ showPicture(src, caption); });
+    return b;
+  }
+  var _picOverlay = null;
+  function showPicture(src, caption){
+    if (!_picOverlay){
+      _picOverlay = el("div","pic-overlay");
+      _picOverlay.setAttribute("role", "dialog");
+      _picOverlay.setAttribute("aria-modal", "true");
+      _picOverlay.appendChild(document.createElement("img"));
+      _picOverlay.appendChild(el("div","pic-cap"));
+      _picOverlay.addEventListener("click", hidePicture);
+      document.addEventListener("keydown", function(e){ if (e.key === "Escape") hidePicture(); });
+      document.body.appendChild(_picOverlay);
+    }
+    var im = _picOverlay.querySelector("img");
+    im.src = src; im.alt = caption;
+    _picOverlay.querySelector(".pic-cap").textContent = caption;
+    _picOverlay.setAttribute("aria-label", caption);
+    _picOverlay.classList.add("show");
+  }
+  function hidePicture(){ if (_picOverlay) _picOverlay.classList.remove("show"); }
+
   function renderStation(s, text, html){
     text = stripMeta(text);
+    if (s.key === "prep"){
+      var rd = REPLACEMENT_RE.exec(text);
+      if (rd && s._prepText && text.indexOf("\n") === -1) text = swapDishLine(s._prepText, rd[1], text);
+      s._prepText = text;
+    }
     s._produced = true;
     s._text = (s._text ? s._text + "\n" : "") + text;
     var declined = DECLINE_RE.test(text);
@@ -1220,7 +1545,8 @@
         if (!body){ c.className = "cell empty"; continue; }
         c.appendChild(el("span","check","✓"));
         if (s.key === "menu" && imgs[i]){
-          var p = el("span","plate"); var im = document.createElement("img"); im.src = imgs[i]; im.alt = ""; p.appendChild(im); c.appendChild(p);
+          var comma0 = body.indexOf(",");
+          c.appendChild(plateButton(imgs[i], (comma0 > 0 && comma0 < 60) ? body.slice(0, comma0) : body.slice(0, 90)));
         }
         var comma = body.indexOf(",");
         if (s.key === "menu" && comma > 0 && comma < 60){
@@ -1410,7 +1736,9 @@
       body: JSON.stringify({ payload: envelope(events), timeoutMs: 20000 })
     }).then(function(r){ return r.text().then(function(t){
       if (!r.ok) throw new Error("HTTP " + r.status + " " + r.statusText + " " + t.slice(0,120));
-      return t ? JSON.parse(t) : {};
+      var res = t ? JSON.parse(t) : {};
+      evRecordAll(res);
+      return res;
     }); });
   }
 
@@ -1454,8 +1782,15 @@
         });
       });
     });
+    SENTINELS.slice().reverse().forEach(function(def){
+      if (guestFor(def.url)) return;
+      var sg = { url:def.url, speakerUri:def.url, title:def.title, sentinel:def };
+      guests.unshift(sg);
+      buildGuestRow(sg);
+    });
     /* "New week" starts a fresh conversation -- bring the guests along. A
-       guest that can't rejoin doesn't hold up the planner. */
+       guest that can't rejoin (e.g. the sentinel isn't running) doesn't hold
+       up the planner. */
     guests.forEach(function(g){
       chain = chain.then(function(){
         return joinGuest(g).catch(function(err){
@@ -1488,7 +1823,21 @@
     { url:"https://secondassistant.pythonanywhere.com/verity/",  name:"Verity (PythonAnywhere)" },
     { url:"http://localhost:8769/",                              name:"GeminiGeo (local)" }
   ];
-  var guests = [];   /* { url, speakerUri, title, _lamp, _workEl, _cell, _row } */
+  var guests = [];   /* { url, speakerUri, title, sentinel, _lamp, _workEl, _cell, _row } */
+
+  /* The sentinels join automatically. They're never asked anything: each
+     watches every reply and, on finding a problem, asks for the floor
+     (requestFloor with an "@issueDetected" reason). The convener grants it
+     or turns it down; if granted, the sentinel explains the issue and the
+     convener revokes its floor. */
+  var SENTINELS = [
+    { url:"http://"+HOST+":8307/", title:"Allergy Sentinel", alertRe:/^Allergy alert/i,
+      blurb:"Watches every reply; speaks only to flag an allergen problem.",
+      allClear:"No allergen problems spotted in this round." },
+    { url:"http://"+HOST+":8308/", title:"Recall Sentinel", alertRe:/^Food recall alert/i,
+      blurb:"Watches every reply; speaks only when an ingredient is involved in an active FDA food recall.",
+      allClear:"No active FDA recalls found for this round's ingredients." }
+  ];
 
   KNOWN_GUESTS.forEach(function(k){
     var o = document.createElement("option"); o.value = k.url; o.textContent = k.name; guestPick.appendChild(o);
@@ -1521,11 +1870,14 @@
      floor manager and convener only recognize the agent's replies if the
      invite names it. */
   function fetchManifest(url){
+    /* sent straight to the agent, so the floor manager never reports it */
+    evLog("You", evName(url), "getManifests", "(direct, not via the floor)");
     return fetch(gw("/api/proxy-send"), {
       method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ targetUrl:url, payload: envelope([{ eventType:"getManifests", to:{ serviceUrl:url } }]), timeoutMs:10000 })
     }).then(function(r){ return r.json(); }).then(function(res){
       var evs = (res && res.json && (res.json.openFloor || res.json.openfloor || {}).events) || [];
+      evs.forEach(function(e){ evLog(evName(url), "You", e.eventType, "(direct)"); });
       for (var i = 0; i < evs.length; i++){
         if (evs[i].eventType !== "publishManifests") continue;
         var m = (((evs[i].parameters || {}).servicingManifests) || [])[0] || {};
@@ -1545,21 +1897,26 @@
     var lamp = el("span","lamp idle","Joining"); g._lamp = lamp; stn.appendChild(lamp);
     var work = el("div","working"); work.hidden = true; g._workEl = work; stn.appendChild(work);
 
-    var askBtn = el("button","ask-open","↳ ask this agent"); askBtn.type = "button";
-    var askForm = document.createElement("form"); askForm.className = "ask";
-    var askIn = document.createElement("input"); askIn.placeholder = "direct question…"; askIn.setAttribute("aria-label","Direct question to " + g.title);
-    var askGo = document.createElement("button"); askGo.type = "submit"; askGo.textContent = "Ask";
-    askForm.appendChild(askIn); askForm.appendChild(askGo);
-    askBtn.addEventListener("click", function(){ askForm.classList.toggle("show"); if (askForm.classList.contains("show")) askIn.focus(); });
-    askForm.addEventListener("submit", function(ev){
-      ev.preventDefault();
-      var q = askIn.value.trim(); if (!q) return;
-      askIn.value = ""; askForm.classList.remove("show");
-      sendCall(q, g);
-    });
+    if (g.sentinel){
+      stn.appendChild(el("span","src", g.sentinel.blurb));
+    } else {
+      var askBtn = el("button","ask-open","↳ ask this agent privately"); askBtn.type = "button";
+      var askForm = document.createElement("form"); askForm.className = "ask";
+      var askIn = document.createElement("input"); askIn.placeholder = "private question…"; askIn.setAttribute("aria-label","Private question to " + g.title);
+      var askGo = document.createElement("button"); askGo.type = "submit"; askGo.textContent = "Ask";
+      askForm.appendChild(askIn); askForm.appendChild(askGo);
+      askBtn.addEventListener("click", function(){ askForm.classList.toggle("show"); if (askForm.classList.contains("show")) askIn.focus(); });
+      askForm.addEventListener("submit", function(ev){
+        ev.preventDefault();
+        var q = askIn.value.trim(); if (!q) return;
+        askIn.value = ""; askForm.classList.remove("show");
+        sendCall(q, g);
+      });
+      stn.appendChild(askBtn); stn.appendChild(askForm);
+    }
     var rm = el("button","remove","× remove from floor"); rm.type = "button";
     rm.addEventListener("click", function(){ removeGuest(g); });
-    stn.appendChild(askBtn); stn.appendChild(askForm); stn.appendChild(rm);
+    stn.appendChild(rm);
     row.appendChild(stn);
 
     var cell = el("div","cell empty"); g._cell = cell; row.appendChild(cell);
@@ -1575,9 +1932,12 @@
     setLamp(g, "idle", "Joining");
     return floorSend([{ eventType:"invite", to:guestTo(g) }]).then(function(res){
       logRow("Convener", "invited " + g.title);
-      ((res.openFloor || {}).events || []).forEach(function(e){ onStreamLine({ event:e }); });
-      return floorSend([{ eventType:"grantFloor", to:guestTo(g) }]);
-    }).then(function(){ if (!g._produced) setLamp(g, "idle", "Ready"); });
+      /* floorSend already logged these events -- just render them */
+      ((res.openFloor || {}).events || []).forEach(function(e){ onStreamLine({ event:e, logged:true }); });
+      /* a sentinel never gets the floor up front: it asks (requestFloor
+         with a reason) when it finds an issue, and the convener decides */
+      if (!g.sentinel) return floorSend([{ eventType:"grantFloor", to:guestTo(g) }]);
+    }).then(function(){ if (!g._produced) setLamp(g, "idle", g.sentinel ? "Watching" : "Ready"); });
   }
 
   function addGuest(url){
@@ -1619,18 +1979,48 @@
     });
   }
 
+  /* A sentinel's alert as sent in its html feature -- the ingredients it's
+     about in bold -- rebuilt from text nodes and <b> only. An added agent's
+     HTML is never trusted: every other tag is reduced to its text, and
+     line breaks are kept. Null if there's no bold to show. */
+  function boldOnlyProse(html){
+    if (!html || !/<(b|strong)\b/i.test(html)) return null;
+    var doc;
+    try { doc = new DOMParser().parseFromString(html, "text/html"); } catch(e){ return null; }
+    var box = el("div","prose");
+    (function walk(node, into){
+      Array.prototype.forEach.call(node.childNodes, function(n){
+        if (n.nodeType === 3){ into.appendChild(document.createTextNode(n.nodeValue)); return; }
+        if (n.nodeType !== 1) return;
+        var tag = n.nodeName.toLowerCase();
+        if (tag === "script" || tag === "style") return;
+        if (tag === "br"){ into.appendChild(document.createTextNode("\n")); return; }
+        if (tag === "b" || tag === "strong"){ var b = document.createElement("b"); into.appendChild(b); walk(n, b); return; }
+        walk(n, into);
+        if (/^(p|div|li|h[1-6]|tr)$/.test(tag)) into.appendChild(document.createTextNode("\n"));
+      });
+    })(doc.body, box);
+    return box.textContent.trim() ? box : null;
+  }
+
   function renderGuest(g, text, html){
     /* agents prefix replies with who they're answering ("<our uri>: ...") */
     var prefix = state.clientUri + ":";
     text = stripMeta(text);
     if (text.indexOf(prefix) === 0) text = text.slice(prefix.length).trim();
+    var isAlert = !!g.sentinel && g.sentinel.alertRe.test(text);
+    /* a sentinel can raise several alerts in one round -- keep them all */
+    var keep = isAlert && g._produced && g._alerted;
     g._produced = true;
-    setLamp(g, "done");
+    if (isAlert) g._alerted = true;
+    setLamp(g, isAlert ? "declined" : "done", isAlert ? "Alert" : null);
     hideWorking(g);
     var cell = g._cell;
     cell.className = "cell";
-    cell.innerHTML = "";
-    if (text) cell.appendChild(el("div","prose", text));
+    if (!keep) cell.innerHTML = "";
+    var bold = g.sentinel ? boldOnlyProse(html) : null;
+    if (bold) cell.appendChild(bold);
+    else if (text) cell.appendChild(el("div","prose", text));
     var imgs = imagesFromHtml(html);
     if (imgs.length){
       var wrap = el("div","aihtml");
@@ -1638,13 +2028,45 @@
       cell.appendChild(wrap);
     }
     if (!text && !imgs.length) cell.appendChild(el("div","prose","(sent an HTML reply with no text)"));
-    logRow(g.title, "✓ " + oneLine(text || "HTML reply"));
+    logRow(g.title, (isAlert ? "⚠ " : "✓ ") + oneLine(text || "HTML reply"), isAlert ? "decline" : null);
   }
 
   guestForm.addEventListener("submit", function(e){
     e.preventDefault();
     addGuest(guestUrl.value || guestPick.value);
   });
+
+  /* The specialist a request names at its start ("Menu Designer, ...") or
+     after "ask/tell/hey/@/attention" -- the same names and rules as the
+     convener's detect_addressed_agent (convener.py), kept in sync by hand.
+     Such a request still goes out publicly; the convener gives only that
+     specialist the floor, so only it answers. */
+  var ADDRESS_ALIASES = {
+    menu:  ["menu designer", "menu design"],
+    nutri: ["nutrition", "nutrition specialist", "nutritionist"],
+    prep:  ["recipe", "recipe and portion", "recipe & portion", "portion specialist"],
+    opt:   ["menu optimization", "menu optimizer"],
+    inv:   ["inventory", "inventory specialist"],
+    proc:  ["procurement", "procurement specialist", "purchasing"],
+    shop:  ["shopping list", "shopping list specialist", "grocery list"]
+  };
+  function _reEscape(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  function addressedStation(text){
+    var t = String(text || "").trim().toLowerCase();
+    var keys = Object.keys(ADDRESS_ALIASES);
+    for (var pass = 0; pass < 2; pass++){
+      for (var i = 0; i < keys.length; i++){
+        var aliases = ADDRESS_ALIASES[keys[i]];
+        for (var j = 0; j < aliases.length; j++){
+          var a = _reEscape(aliases[j]);
+          var re = pass === 0 ? new RegExp("^" + a + "[\\s,:.!?]")
+                              : new RegExp("\\b(?:ask|tell|hey|@|attention|attn)\\s+(?:the\\s+)?" + a + "\\b");
+          if (re.test(t)) return byKey(keys[i]);
+        }
+      }
+    }
+    return null;
+  }
 
   /* ---------- send a call (broadcast, or direct to one station) ---------- */
   function sendCall(text, directStation){
@@ -1657,21 +2079,19 @@
     if (!directStation && /\d/.test(text)) state.lastCallText = text;
 
     var isGuest = !!directStation && guests.indexOf(directStation) !== -1;
+    var addressed = directStation ? null : addressedStation(text);
     var wireText = text;
     if (!directStation){
       STATIONS.forEach(function(s){ setLamp(s, "idle", "Idle"); s._produced = false; s._text = ""; hideWorking(s); });
-      guests.forEach(function(g){ setLamp(g, "idle", "Idle"); g._produced = false; });
-      logRow("You", "“" + text + "”", "you");
-      setExpo("routing…", true);
+      guests.forEach(function(g){ setLamp(g, "idle", g.sentinel ? "Watching" : "Idle"); g._produced = false; g._alerted = false; });
+      logRow("You", (addressed ? "→ " + addressed.title + " (public): " : "") + "“" + text + "”", "you");
+      setExpo(addressed ? addressed.title + " — asked by name" : "routing…", true);
     } else if (isGuest){
-      logRow("You", "→ " + directStation.title + ": “" + text + "”", "you");
+      logRow("You", "→ " + directStation.title + " (private): “" + text + "”", "you");
       directStation._produced = false;
       setLamp(directStation, "fire");
     } else {
-      /* prefix with the specialist's name -- the convener's detect_addressed_agent
-         routes that surgically to just that agent (ask_specific_agent). */
-      wireText = directStation.name + ", " + text;
-      logRow("You", "→ " + directStation.title + ": “" + text + "”", "you");
+      logRow("You", "→ " + directStation.title + " (private): “" + text + "”", "you");
       directStation._produced = false; directStation._text = "";
       setLamp(directStation, "fire");
       showWorking(directStation);
@@ -1679,16 +2099,22 @@
 
     var ev = { eventType:"utterance", parameters:{ dialogEvent: dialogEvent(wireText, !directStation) } };
 
-    /* Guests get the floor back first: the convener revokes everyone but the
-       one specialist on a direct ask, and the floor manager's one-reply-per-
-       turn cap revokes a guest after it answers. A question to one guest goes
-       privately, so the specialists and the convener's routing stay out of it. */
+    /* A question to one agent goes privately (OFP's private flag): only that
+       agent hears it, and it answers privately. For a specialist the convener
+       grants it the floor and relays the question to it in your voice; for a
+       guest -- which the convener doesn't route -- the page grants the floor
+       itself first. A broadcast request gives guests the floor back, since
+       the convener revokes them after each answer. */
     var events = [];
     if (isGuest){
       events.push({ eventType:"grantFloor", to:guestTo(directStation) });
       ev.to = { speakerUri:directStation.speakerUri, serviceUrl:directStation.url, private:true };
-    } else if (!directStation){
-      guests.forEach(function(g){ events.push({ eventType:"grantFloor", to:guestTo(g) }); });
+    } else if (directStation){
+      ev.to = { speakerUri:directStation.url, serviceUrl:directStation.url, private:true };
+    } else if (!addressed){
+      /* (a request naming one specialist stays public, but the guests are
+         left without the floor, so only that specialist answers) */
+      guests.forEach(function(g){ if (!g.sentinel) events.push({ eventType:"grantFloor", to:guestTo(g) }); });
     }
     events.push(ev);
 
@@ -1697,7 +2123,14 @@
       .then(function(){
         state.running = false; callBtn.disabled = false;
         STATIONS.forEach(function(s){ if (s._lamp && s._lamp.classList.contains("fire")) setLamp(s, s._produced ? "done" : "idle"); hideWorking(s); });
-        guests.forEach(function(g){ if (g._lamp && g._lamp.classList.contains("fire")) setLamp(g, g._produced ? "done" : "idle"); });
+        guests.forEach(function(g){
+          if (g._lamp && g._lamp.classList.contains("fire")) setLamp(g, g._produced ? "done" : "idle");
+          if (g.sentinel && !directStation && !g._alerted){
+            setLamp(g, "done", "All clear");
+            g._cell.className = "cell"; g._cell.innerHTML = "";
+            g._cell.appendChild(el("div","prose", g.sentinel.allClear));
+          }
+        });
         setExpo(state.opened ? "ready — send a request" : "convener unreachable", false);
         refreshKpis();
       });
@@ -1725,9 +2158,10 @@
     }
     if (line.event){
       var e = line.event, type = e.eventType;
+      if (!line.logged) evRecord(e);
       if (type === "utterance"){
         var dlg = e.parameters && e.parameters.dialogEvent ? e.parameters.dialogEvent : (e.dialogEvent || {});
-        var spk = dlg.speakerUri || e._floorManagerOrigin || "";
+        var spk = dlg.speakerUri || e._floorManagerFrom || "";
         var f = dlg.features || {};
         var txt = ((f.text && f.text.tokens) || []).map(function(t){ return t && t.value != null ? t.value : t; }).join(" ").trim();
         var html = (f.html && f.html.tokens && f.html.tokens[0] && (f.html.tokens[0].value != null ? f.html.tokens[0].value : f.html.tokens[0])) || "";
@@ -1779,15 +2213,78 @@
   function hideBanner(){ banner.classList.remove("show"); }
 
   /* ---------- wire up ---------- */
+  /* Earlier requests typed in the main box, most recent first. Kept in this
+     browser only -- a convenience, so the page works the same without it. */
+  var HIST_KEY = "cafeteriaOps.requestHistory", HIST_MAX = 20;
+  var histBtn = $("callHistBtn"), histList = $("callHist"), histActive = -1;
+  function loadHistory(){
+    try { var h = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); return Array.isArray(h) ? h : []; }
+    catch(e){ return []; }
+  }
+  function rememberRequest(t){
+    var h = loadHistory().filter(function(x){ return x !== t; });
+    h.unshift(t);
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, HIST_MAX))); } catch(e){}
+  }
+  function closeHistory(){
+    histList.hidden = true; histActive = -1;
+    histBtn.setAttribute("aria-expanded", "false");
+  }
+  function pickHistory(t){
+    callInput.value = t; closeHistory(); callInput.focus();
+    try { callInput.setSelectionRange(t.length, t.length); } catch(e){}
+  }
+  function markActive(i){
+    var items = histList.querySelectorAll("li[role=option]");
+    if (!items.length) return;
+    histActive = (i + items.length) % items.length;
+    Array.prototype.forEach.call(items, function(li, j){ li.classList.toggle("active", j === histActive); });
+    items[histActive].scrollIntoView({ block:"nearest" });
+  }
+  function openHistory(){
+    histList.innerHTML = "";
+    var h = loadHistory();
+    if (!h.length){
+      histList.appendChild(el("li", "empty", "No earlier requests yet"));
+    }
+    h.forEach(function(t){
+      var li = el("li", "", t); li.setAttribute("role", "option");
+      li.addEventListener("mousedown", function(e){ e.preventDefault(); pickHistory(t); });
+      histList.appendChild(li);
+    });
+    histList.hidden = false; histActive = -1;
+    histBtn.setAttribute("aria-expanded", "true");
+  }
+  histBtn.addEventListener("click", function(){ if (histList.hidden) openHistory(); else closeHistory(); });
+  callInput.addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if (histList.hidden) openHistory();
+      markActive(histActive + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter" && !histList.hidden && histActive >= 0){
+      e.preventDefault();
+      pickHistory(histList.querySelectorAll("li[role=option]")[histActive].textContent);
+    } else if (e.key === "Escape" && !histList.hidden){
+      e.stopPropagation(); closeHistory();
+    }
+  });
+  document.addEventListener("mousedown", function(e){
+    if (!histList.hidden && !e.target.closest(".call-field")) closeHistory();
+  });
+
   callForm.addEventListener("submit", function(e){
     e.preventDefault();
-    var t = callInput.value.trim(); if (t) sendCall(t, null);
+    closeHistory();
+    var t = callInput.value.trim(); if (t){ rememberRequest(t); sendCall(t, null); }
   });
+  $("saveLog").addEventListener("click", saveTranscript);
   $("newWeek").addEventListener("click", function(){
     if (state.running) return;
     state.convId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("conv-" + Date.now());
     state.opened = false;
     logRoll.innerHTML = "";
+    evBody.innerHTML = ""; evTotal = 0; evCount.textContent = "";
+    transcript = [];  /* a new week is a new conversation */
     buildBoard();
     guests.forEach(function(g){ g._produced = false; g._cell.className = "cell empty"; g._cell.innerHTML = ""; });
     ["kpiCost","kpiNa","kpiPar"].forEach(function(id){ $(id).textContent = "—"; });
