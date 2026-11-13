@@ -748,6 +748,207 @@ class DeliveryRetryTests(unittest.TestCase):
         self.assertEqual(calls.count("http://localhost:8206/"), 1)
 
 
+class RequestFloorSubjectTests(unittest.TestCase):
+    """requestFloor grants the conversant it's FOR -- the requester, or
+    another conversant it names -- not whoever it's addressed to (OFP 1.1.1
+    sections 1.19 / 0.4.4; the spec's own example addresses the convener)."""
+
+    def setUp(self):
+        self.conv = ConversationState(conv_id="conv-1")
+        self.conv.add_conversant("tag:sentinel", "http://localhost:8307/")
+        self.conv.add_conversant("tag:market", "http://localhost:8200/")
+        for c in self.conv.conversants.values():
+            c.floor_granted = False
+
+    def _granted_to(self, executed):
+        return [(e.get("to") or {}).get("speakerUri") for e in executed if e.get("eventType") == "grantFloor"]
+
+    def test_no_convener_no_to_grants_the_requester(self):
+        executed = router.process_envelope(self.conv, envelope("tag:sentinel", [{"eventType": "requestFloor"}]),
+                                           FLOOR_MANAGER_IDENTITY, FakeDeliver())
+        self.assertEqual(self._granted_to(executed), ["tag:sentinel"])
+        self.assertTrue(self.conv.get_conversant("tag:sentinel").floor_granted)
+
+    def test_on_behalf_of_another_conversant_grants_that_conversant(self):
+        executed = router.process_envelope(self.conv, envelope("tag:sentinel", [
+            {"eventType": "requestFloor", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
+        ]), FLOOR_MANAGER_IDENTITY, FakeDeliver())
+        self.assertEqual(self._granted_to(executed), ["tag:market"])
+
+    def test_addressed_to_the_convener_is_delegated_and_grants_the_requester(self):
+        self.conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        self.conv.convener_speaker_uri = "tag:convener"
+        delegated = []
+
+        def convener_approves(target_url, sent_envelope, timeout):
+            sent = sent_envelope["openFloor"]["events"][0]
+            if target_url == "http://localhost:8199/" and sent["eventType"] == "requestFloor":
+                delegated.append(sent)
+                return [{k: v for k, v in sent.items() if k != "parameters"}]
+            return []
+
+        executed = router.process_envelope(self.conv, envelope("tag:sentinel", [
+            {"eventType": "requestFloor", "to": {"speakerUri": "tag:convener", "serviceUrl": "http://localhost:8199/"}},
+        ]), FLOOR_MANAGER_IDENTITY, convener_approves)
+
+        self.assertEqual(len(delegated), 1)  # the convener decided, per the routing table
+        self.assertEqual(self._granted_to(executed), ["tag:sentinel"])  # not the convener it was addressed to
+
+    def test_convener_decides_a_request_on_its_reason(self):
+        # The sentinel handshake: the request is delegated (and reported
+        # once, with its reason); the convener answers with its own
+        # grantFloor, which is delivered to the requester -- whose reply
+        # (the held alert) then goes out as from a floor holder.
+        self.conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        self.conv.convener_speaker_uri = "tag:convener"
+
+        def deliver(target_url, sent_envelope, timeout):
+            sent = sent_envelope["openFloor"]["events"][0]
+            if target_url == "http://localhost:8199/" and sent["eventType"] == "requestFloor":
+                return [{"eventType": "grantFloor", "to": sent["to"], "reason": sent.get("reason")}]
+            if target_url == "http://localhost:8307/" and sent["eventType"] == "grantFloor":
+                return [utterance_event("Allergy alert: pesto", "tag:sentinel")]
+            return []
+
+        executed = router.process_envelope(self.conv, envelope("tag:sentinel", [
+            {"eventType": "requestFloor", "to": {"speakerUri": "tag:sentinel"}, "reason": "detected an issue: allergen conflict"},
+        ]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        rows = [(e["eventType"], e.get("_floorManagerFrom"), e.get("reason")) for e in executed if e["eventType"] != "utterance"]
+        self.assertEqual(rows[:2], [
+            ("requestFloor", "tag:sentinel", "detected an issue: allergen conflict"),
+            ("grantFloor", "tag:convener", "detected an issue: allergen conflict"),
+        ])
+        speakers = [e["parameters"]["dialogEvent"]["speakerUri"] for e in executed if e.get("eventType") == "utterance"]
+        self.assertEqual(speakers, ["tag:sentinel"])
+
+    def test_request_then_utterance_in_one_reply_gets_the_utterance_through(self):
+        # The sentinel pattern: an agent without the floor replies with
+        # [requestFloor, utterance]; the grant lands before the utterance is
+        # checked, so it's broadcast instead of ignored.
+        self.conv.add_conversant("tag:skeptic", "http://localhost:8206/")
+        self.conv.get_conversant("tag:market").floor_granted = True
+
+        def deliver(target_url, sent_envelope, timeout):
+            sent = sent_envelope["openFloor"]["events"][0]
+            # like the real sentinel: alert only about the market's menu
+            if target_url == "http://localhost:8307/" and sent["eventType"] == "utterance" \
+                    and sent["parameters"]["dialogEvent"]["speakerUri"] == "tag:market":
+                return [{"eventType": "requestFloor"}, utterance_event("Allergy alert: pesto", "tag:sentinel")]
+            return []
+
+        executed = router.process_envelope(self.conv, envelope("tag:market", [utterance_event("Monday: pesto pasta", "tag:market")]),
+                                           FLOOR_MANAGER_IDENTITY, deliver)
+        speakers = [e["parameters"]["dialogEvent"]["speakerUri"] for e in executed if e.get("eventType") == "utterance"]
+        self.assertIn("tag:sentinel", speakers)
+
+
+class TurnCapWithConvenerTests(unittest.TestCase):
+    """With a convener registered, the convener decides when a speaker's
+    floor closes; the floor manager's own one-reply cap stays out of it, so
+    each reply gets exactly one revoke -- the convener's."""
+
+    def test_reply_is_revoked_once_by_the_convener(self):
+        conv = ConversationState(conv_id="conv-1")
+        conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        conv.convener_speaker_uri = "tag:convener"
+        for uri, url in [("tag:market", "http://localhost:8200/"), ("tag:skeptic", "http://localhost:8206/"), ("tag:funding", "http://localhost:8204/")]:
+            conv.add_conversant(uri, url)
+        conv.get_conversant("tag:market").floor_granted = True
+
+        def deliver(target_url, sent_envelope, timeout):
+            sent = sent_envelope["openFloor"]["events"][0]
+            if target_url == "http://localhost:8199/" and sent["eventType"] == "utterance":
+                return [{"eventType": "revokeFloor", "to": {"speakerUri": sent["parameters"]["dialogEvent"]["speakerUri"]}}]
+            return []
+
+        executed = router.process_envelope(conv, envelope("tag:market", [utterance_event("TAM is $1B", "tag:market")]),
+                                           FLOOR_MANAGER_IDENTITY, deliver)
+
+        revokes = [e.get("_floorManagerFrom") for e in executed if e.get("eventType") == "revokeFloor"]
+        self.assertEqual(revokes, ["tag:convener"])
+        self.assertFalse(conv.get_conversant("tag:market").floor_granted)
+        self.assertFalse(conv.get_conversant("tag:market").turn_capped)
+
+
+class ReportedFromTests(unittest.TestCase):
+    """Every reported event carries _floorManagerFrom (who originated it),
+    for a client's from/to event log -- and nothing delivered to a
+    conversant does."""
+
+    def _from(self, executed, event_type, to_speaker=None):
+        for e in executed:
+            if e.get("eventType") == event_type and (to_speaker is None or (e.get("to") or {}).get("speakerUri") == to_speaker):
+                return e.get("_floorManagerFrom")
+        self.fail(f"no {event_type} reported")
+
+    def test_human_invite_and_floor_managers_own_grant(self):
+        conv = ConversationState(conv_id="conv-1")
+        executed = router.process_envelope(conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
+        ]), FLOOR_MANAGER_IDENTITY, FakeDeliver())
+
+        self.assertEqual(self._from(executed, "invite"), "tag:human")
+        # no convener -> the floor manager grants on its own
+        self.assertEqual(self._from(executed, "grantFloor"), FLOOR_MANAGER_IDENTITY["speakerUri"])
+
+    def test_utterance_is_from_its_speaker_and_turn_cap_revoke_from_floor_manager(self):
+        conv = ConversationState(conv_id="conv-1")
+        for uri, url in [("tag:market", "http://localhost:8200/"), ("tag:skeptic", "http://localhost:8206/"), ("tag:funding", "http://localhost:8204/")]:
+            conv.add_conversant(uri, url)
+        deliver = FakeDeliver(replies={"http://localhost:8200/": [utterance_event("TAM is $1B", "tag:market")]})
+
+        executed = router.process_envelope(conv, envelope("tag:human", [utterance_event("go", "tag:human")]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        speakers = {e["parameters"]["dialogEvent"]["speakerUri"]: e.get("_floorManagerFrom") for e in executed if e.get("eventType") == "utterance"}
+        self.assertEqual(speakers, {"tag:human": "tag:human", "tag:market": "tag:market"})
+        self.assertEqual(self._from(executed, "revokeFloor", "tag:market"), FLOOR_MANAGER_IDENTITY["speakerUri"])
+
+    def test_convener_decisions_are_from_the_convener(self):
+        conv = ConversationState(conv_id="conv-1")
+        conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        conv.convener_speaker_uri = "tag:convener"
+        conv.add_conversant("tag:market", "http://localhost:8200/")
+        deliver = FakeDeliver(replies={
+            "http://localhost:8199/": [{"eventType": "grantFloor", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}}],
+        })
+
+        executed = router.process_envelope(conv, envelope("tag:human", [utterance_event("go", "tag:human")]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        self.assertEqual(self._from(executed, "grantFloor"), "tag:convener")
+
+    def test_request_the_convener_approves_unchanged_stays_the_senders(self):
+        conv = ConversationState(conv_id="conv-1")
+        conv.add_conversant("tag:convener", "http://localhost:8199/", "Convener")
+        conv.convener_speaker_uri = "tag:convener"
+        conv.add_conversant("tag:market", "http://localhost:8200/")
+
+        def echo(target_url, sent_envelope, timeout):
+            sent = sent_envelope["openFloor"]["events"][0]
+            if target_url == "http://localhost:8199/":
+                return [{"eventType": sent["eventType"], "to": sent["to"]}]
+            return []
+
+        executed = router.process_envelope(conv, envelope("tag:human", [
+            {"eventType": "grantFloor", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
+        ]), FLOOR_MANAGER_IDENTITY, echo)
+
+        grant = next(e for e in executed if e.get("eventType") == "grantFloor")
+        self.assertEqual(grant["_floorManagerFrom"], "tag:human")
+        self.assertEqual(grant["_floorManagerVia"], "tag:convener")
+
+    def test_delivered_events_carry_no_report_keys(self):
+        conv = ConversationState(conv_id="conv-1")
+        deliver = FakeDeliver()
+        router.process_envelope(conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
+        ]), FLOOR_MANAGER_IDENTITY, deliver)
+
+        for _, sent in deliver.calls:
+            for e in sent["openFloor"]["events"]:
+                self.assertFalse([k for k in e if k.startswith("_floorManager")], e)
+
+
 class OnEventTests(unittest.TestCase):
     """on_event fires the moment each event is finalized into `executed`,
     not after the whole round -- so a streaming caller can show each
