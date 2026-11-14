@@ -467,8 +467,35 @@ class ConvenerDetectionTests(unittest.TestCase):
 
         self.assertTrue(self.conv.get_conversant("tag:convener").is_convener)
         self.assertFalse(self.conv.get_conversant("tag:convener").floor_granted)
-        revoke_events = [e for e in executed if e.get("eventType") == "revokeFloor"]
-        self.assertEqual(len(revoke_events), 1)
+        # The convener manages the floor and never holds it: no grantFloor or
+        # revokeFloor is ever sent to it or reported (it used to get both).
+        floor_events = [e for e in executed if e.get("eventType") in ("grantFloor", "revokeFloor")]
+        self.assertEqual(floor_events, [])
+
+    def test_a_convener_invited_after_agents_revokes_them_but_not_itself(self):
+        self.conv = ConversationState(conv_id="conv-2")
+        sent = []
+
+        def deliver(target_url, sent_envelope, timeout):
+            event = sent_envelope["openFloor"]["events"][0]
+            sent.append((target_url, event["eventType"]))
+            if event["eventType"] == "invite":
+                return [{"eventType": "acceptInvite"}]
+            if event["eventType"] == "getManifests":
+                return publish_manifests_reply(is_convener=target_url == "http://localhost:8199/")
+            return []
+
+        router.process_envelope(self.conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:agent", "serviceUrl": "http://localhost:8301/"}}]),
+            FLOOR_MANAGER_IDENTITY, deliver)
+        router.process_envelope(self.conv, envelope("tag:human", [
+            {"eventType": "invite", "to": {"speakerUri": "tag:convener", "serviceUrl": "http://localhost:8199/"}}]),
+            FLOOR_MANAGER_IDENTITY, deliver)
+
+        to_convener = [t for url, t in sent if url == "http://localhost:8199/" and t in ("grantFloor", "revokeFloor")]
+        self.assertEqual(to_convener, [])
+        self.assertIn(("http://localhost:8301/", "revokeFloor"), sent)  # the agent invited earlier
+        self.assertFalse(self.conv.get_conversant("tag:agent").floor_granted)
 
 
 class ConvenerPresentTests(unittest.TestCase):

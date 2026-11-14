@@ -675,6 +675,17 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                 resolved = event
             to = _event_to(resolved)
 
+            # The convener manages the floor; it never holds it, so a
+            # grantFloor/revokeFloor addressed to it is neither sent nor
+            # reported. Seen live: inviting the convener got it the grant
+            # every conversant gets while there's no convener, and its
+            # registration then revoked it again -- two meaningless events.
+            if resolved.get("eventType") in (GRANT_FLOOR, REVOKE_FLOOR) and _is_convener_target(conv, to):
+                convener = conv.convener
+                if convener is not None:
+                    convener.floor_granted = False
+                continue
+
             if event_type == INVITE:
                 # apply_local_state creates the conversant for invite -- resolve
                 # the target AFTER, from what it just added.
@@ -736,13 +747,28 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
     return executed
 
 
+def _is_convener_target(conv: ConversationState, to) -> bool:
+    """True when ``to`` addresses this conversation's registered convener."""
+    if not conv.convener_speaker_uri or not to:
+        return False
+    convener = conv.convener
+    ids = {normalize_id(conv.convener_speaker_uri)}
+    if convener is not None:
+        ids.add(normalize_id(convener.service_url))
+    return bool({normalize_id(v) for v in (_to_speaker_uri(to), _to_service_url(to)) if v} & ids)
+
+
 def _revoke_all_on_convener_registration(conv: ConversationState) -> list:
     """Conversants invited before any convener joined were granted the floor
     (see apply_local_state's invite handling). Once a convener registers it
-    decides who speaks, so revoke everyone still holding the floor --
-    including the convener itself, matching the state they'd be in had the
-    convener been present when they were invited. Trusted: these are the
-    floor manager's own reconciliation, not something to delegate."""
+    decides who speaks, so revoke everyone still holding the floor, matching
+    the state they'd be in had the convener been present when they were
+    invited. Not the convener itself: it manages the floor and never holds
+    it, so it is only marked revoked here, without an event. Trusted: these
+    are the floor manager's own reconciliation, not something to delegate."""
+    convener = conv.convener
+    if convener is not None:
+        convener.floor_granted = False
     return [
         {"eventType": REVOKE_FLOOR, "to": {"speakerUri": c.speaker_uri, "serviceUrl": c.service_url},
          _TRUSTED_KEY: True, _ORIGIN_KEY: _FLOOR_MANAGER_ORIGIN}
