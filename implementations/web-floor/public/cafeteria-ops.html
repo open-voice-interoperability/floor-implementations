@@ -570,6 +570,7 @@
         <div class="field"><label>Diners</label><span class="val">450</span></div>
         <button class="btn-ghost" id="newWeek" type="button">New week</button>
         <button class="btn-ghost" id="saveLog" type="button" title="Download this conversation as a plain-text file">Save log</button>
+        <button class="btn-ghost" id="saveEvents" type="button" title="Download the event log -- every floor event -- as a plain-text file">Save events</button>
         <button class="btn-ghost" id="themeToggle" type="button">Dark</button>
       </div>
     </header>
@@ -948,8 +949,10 @@
     if (who) return evName(who) + (to.private ? " (private)" : "");
     return EV_BROADCAST[e.eventType] ? "Everyone" : "—";
   }
+  var evRecords = [];  /* what Save events writes: one per row of the event log */
   function evLog(from, to, name, note){
     var t = new Date();
+    evRecords.push({ t: t, from: from, to: to, name: name, note: note || "" });
     var tr = document.createElement("tr"); tr.className = name;
     tr.appendChild(el("td","t", pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()) + "." + String(t.getMilliseconds()).padStart(3,"0")));
     tr.appendChild(el("td","", from));
@@ -1007,6 +1010,45 @@
     if (!transcript.length) out.push("(nothing has been said yet)");
     return out.join("\r\n");
   }
+  function eventsText(){
+    var now = new Date();
+    var out = ["Cafeteria Ops Planner — event log",
+               "Conversation: " + state.convId,
+               "Saved: " + stamp(now, true),
+               "Events: " + evRecords.length, ""];
+    var rows = evRecords.map(function(r){
+      var day = stamp(r.t, true).slice(0, 10);
+      var time = stamp(r.t) + "." + String(r.t.getMilliseconds()).padStart(3, "0");
+      return { day: day, cells: [time, r.from, r.to, r.name], note: String(r.note).replace(/\s+/g, " ").trim() };
+    });
+    var head = ["Time", "From", "To", "Event"];
+    var width = head.map(function(h, i){
+      return rows.reduce(function(w, r){ return Math.max(w, String(r.cells[i]).length); }, h.length);
+    });
+    function line(cells, note){
+      return (cells.map(function(c, i){ return String(c).padEnd(width[i]); }).join("  ") + (note ? "  " + note : "")).replace(/\s+$/, "");
+    }
+    var day = "";
+    out.push(line(head, "Details"));
+    rows.forEach(function(r){
+      if (r.day !== day){ day = r.day; out.push("", "--- " + day + " ---"); }
+      out.push(line(r.cells, r.note));
+    });
+    if (!rows.length) out.push("(no events yet)");
+    return out.join("\r\n");
+  }
+  function downloadText(prefix, text){
+    var d = new Date();
+    var name = prefix + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+             + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".txt";
+    var url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  function saveEvents(){ downloadText("cafeteria-ops-events-", eventsText()); }
+
   function saveTranscript(){
     var d = new Date();
     var name = "cafeteria-ops-log-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
@@ -2278,12 +2320,13 @@
     var t = callInput.value.trim(); if (t){ rememberRequest(t); sendCall(t, null); }
   });
   $("saveLog").addEventListener("click", saveTranscript);
+  $("saveEvents").addEventListener("click", saveEvents);
   $("newWeek").addEventListener("click", function(){
     if (state.running) return;
     state.convId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("conv-" + Date.now());
     state.opened = false;
     logRoll.innerHTML = "";
-    evBody.innerHTML = ""; evTotal = 0; evCount.textContent = "";
+    evBody.innerHTML = ""; evTotal = 0; evCount.textContent = ""; evRecords = [];
     transcript = [];  /* a new week is a new conversation */
     buildBoard();
     guests.forEach(function(g){ g._produced = false; g._cell.className = "cell empty"; g._cell.innerHTML = ""; });
