@@ -109,7 +109,7 @@ class FloorSendIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.get_json()["openFloor"]["events"]
 
-    def test_invite_then_grant_then_utterance_round_trip(self):
+    def test_invite_then_utterance_round_trip_without_convener(self):
         conv_id = "integration-conv-1"
 
         self._send(conv_id, "tag:human", [
@@ -117,12 +117,10 @@ class FloorSendIntegrationTests(unittest.TestCase):
         ])
         conv = flask_gateway.floor_registry.get(conv_id)
         self.assertIsNotNone(conv.get_conversant("tag:market"))
-        self.assertFalse(conv.get_conversant("tag:market").floor_granted)  # auto-revoked after invite
-
-        self._send(conv_id, "tag:human", [
-            {"eventType": "grantFloor", "to": {"speakerUri": "tag:market", "serviceUrl": "http://localhost:8200/"}},
-        ])
+        # No convener: the invite is followed by a delivered grantFloor, so
+        # the agent's own local floor gate opens too.
         self.assertTrue(conv.get_conversant("tag:market").floor_granted)
+        self.assertTrue(self.market_state["floor_granted"])
 
         events = self._send(conv_id, "tag:human", [
             {
@@ -133,12 +131,14 @@ class FloorSendIntegrationTests(unittest.TestCase):
         reply_texts = [_extract_text(e) for e in events if e.get("eventType") == "utterance"]
         self.assertIn("market says: what's the TAM?", reply_texts)
 
-    def test_ungranted_agent_does_not_reply(self):
+    def test_revoked_agent_does_not_reply(self):
         conv_id = "integration-conv-2"
         self._send(conv_id, "tag:human", [
             {"eventType": "invite", "to": {"speakerUri": "tag:skeptic", "serviceUrl": "http://localhost:8206/"}},
         ])
-        # No grantFloor sent -- skeptic stays revoked.
+        self._send(conv_id, "tag:human", [
+            {"eventType": "revokeFloor", "to": {"speakerUri": "tag:skeptic", "serviceUrl": "http://localhost:8206/"}},
+        ])
 
         events = self._send(conv_id, "tag:human", [
             {

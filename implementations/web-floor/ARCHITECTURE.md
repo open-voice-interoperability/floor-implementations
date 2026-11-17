@@ -19,13 +19,13 @@ graph LR
   U[User in Browser]
 
   subgraph B[Browser Client]
-    UI[index.html UI controls]
+    UI["index.html / cafeteria-ops.html UI controls"]
     JS["app.js: build ONE envelope per user action"]
   end
 
   subgraph G[Flask Gateway]
     SEND["POST /api/floor/send"]
-    STREAM["POST /api/floor/stream (round robin)"]
+    STREAM["POST /api/floor/stream (incremental NDJSON)"]
     STATE["GET /api/floor/state"]
     ROUTER["floor_router.py: routing-table loop"]
     FSTATE["floor_state.py: per-conversation conversant/floor state"]
@@ -46,7 +46,9 @@ graph LR
   ROUTER -- "Pass-Through (broadcast / private)" --> S1
   ROUTER -- "Pass-Through (broadcast / private)" --> S2
   ROUTER -- "Delegate / courtesy-copy" --> CONV
+  ROUTER -- "resumeAfterFloorHolder (direct re-request)" --> S1
   CONV -- "decision events (grant/revoke/invite/utterance)" --> ROUTER
+  S1 -- "reply, or transient floorHolder status" --> ROUTER
 
   ROUTER --> JS
   JS --> U
@@ -72,6 +74,37 @@ graph LR
 - The convener also receives a **courtesy copy** of every Pass-Through
   utterance, exactly like any other conversant would, which is what gives it
   its chance to act without any special-casing in the table above.
+- Every agent-facing envelope carries `conversation.conversants` — the
+  identification block of everyone currently on the floor (built by
+  `_build_outbound_envelope` via `_conversants_payload`, not just for the
+  convener call). A recipient can use it to tell "I'm the only agent here"
+  from "someone else can presumably handle this."
+
+### Incremental streaming
+
+`/api/floor/stream` returns NDJSON and is genuinely incremental: the router
+takes an `on_event` callback and emits each executed event (and each
+per-conversant `working`/`idle` progress line) as it happens, rather than
+buffering the whole round and flushing at the end. `/api/floor/send` runs
+the same routing loop with no callback and returns the aggregated envelope.
+
+### Floor-holder status and resume
+
+An agent whose real work will outlast the request timeout can first return a
+transient **floor-holder** reply — an `utterance` flagged with the
+`floorHolder` feature ("checking the nutrition levels…") — instead of its
+answer. When `deliver_and_collect` sees one it:
+
+1. streams that status straight to the client via `on_event` (so the UI can
+   show "what this agent is working on"), but does **not** finalize it — the
+   floor-holder utterance never re-enters the routing table;
+2. sends a `resumeAfterFloorHolder` `utterance` directly back to that same
+   conversant (carrying the conversation id and the original text), and
+   returns whatever that second call replies with as the agent's answer.
+
+The resume request is point-to-point and never enters the routing table.
+Agents that don't use the protocol just answer normally and this path is a
+no-op.
 
 ### Concurrency model
 
@@ -152,6 +185,11 @@ graph LR
 - Browser code sends floor-managed conversation traffic through
   `/api/floor/send`/`/api/floor/stream`, and manual single-agent pokes
   through `/api/proxy-send`/`/api/proxy-stream`. Both paths coexist.
+- Two static UIs ship in `public/` and both drive the floor path: the
+  general-purpose `index.html`, and `cafeteria-ops.html`, a task-styled
+  "Cafeteria Ops Planner" board over the cafeteria-ops convener plus
+  specialists (it also renders floor-holder working notes and pulls recipe
+  images from themealdb.com).
 - Gateway forwards requests to local or remote OpenFloor agents.
 - `/api/proxy-send` returns a normalized response envelope: `ok`, `status`,
   `statusText`, `text`, `json`. `/api/floor/send` and `/api/floor/stream`

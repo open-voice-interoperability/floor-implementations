@@ -21,5 +21,13 @@
   {"url": "http://localhost:8205/", "conversationalName": "Workforce Strategist"},
   {"url": "http://localhost:8208/", "conversationalName": "Technical Feasibility"},
   {"url": "http://localhost:8206/", "conversationalName": "Devil's Advocate"},
-  {"url": "http://localhost:8207/", "conversationalName": "Strategy Synthesizer"}
+  {"url": "http://localhost:8207/", "conversationalName": "Strategy Synthesizer"},
+  {"url": "http://127.0.0.1:8300/", "conversationalName": "Cafeteria Ops Convener"},
+  {"url": "http://127.0.0.1:8301/", "conversationalName": "Menu Designer"},
+  {"url": "http://127.0.0.1:8302/", "conversationalName": "Nutrition Specialist"},
+  {"url": "http://127.0.0.1:8303/", "conversationalName": "Recipe & Portion Specialist"},
+  {"url": "http://127.0.0.1:8304/", "conversationalName": "Menu Optimization Specialist"},
+  {"url": "http://127.0.0.1:8305/", "conversationalName": "Inventory Specialist"},
+  {"url": "http://127.0.0.1:8306/", "conversationalName": "Procurement Specialist"},
+  {"url": "http://127.0.0.1:8310/", "conversationalName": "Shopping List Specialist"}
 ]

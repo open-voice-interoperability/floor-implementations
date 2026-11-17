@@ -1,5 +1,5 @@
 [
-  {"url": "http://192.168.4.51:8767/", "conversationalName": "Stella (LAN)"},
+  {"url": "http://localhost:8767/", "conversationalName": "Stella (local 8767)"},
   {"url": "http://192.168.4.51:8769/", "conversationalName": "Gemini Agent (LAN)"},
   {"url": "http://192.168.4.51:8768/verity/", "conversationalName": "Verity (LAN)"},
   {"url": "http://192.168.4.51:8081/", "conversationalName": "TimeAgent (LAN)"},

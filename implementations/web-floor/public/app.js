@@ -42,7 +42,7 @@ const messageQueue = {
 
 const KNOWN_AGENTS = [
   { url: "https://openvoice-stella.vercel.app/", conversationalName: "Stella (Vercel)" },
-  { url: "http://127.0.0.1:8767/", conversationalName: "Stella (local 8767)" },
+  { url: "http://localhost:8767/", conversationalName: "Stella (local 8767)" },
   { url: "http://127.0.0.1:8768/verity/", conversationalName: "Verity" },
   { url: "http://127.0.0.1:8769/", conversationalName: "GeminiGeo" },
   { url: "http://127.0.0.1:8081/", conversationalName: "TimeAgent" },

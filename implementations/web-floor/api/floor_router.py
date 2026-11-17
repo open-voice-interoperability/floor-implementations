@@ -18,6 +18,7 @@ implements -- so no rewrite is needed when Phase 2 lands.
 import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from floor_state import ConversationState, normalize_id
 
@@ -51,6 +52,22 @@ MAX_CONCURRENT_DELIVERIES = 8
 # convener -- see process_envelope's queue.popleft() handling.
 _ORIGIN_KEY = "_floorManagerOrigin"
 
+# Report-only key on the copy of each event handed to the caller (the
+# returned `executed` list and on_event): who originated it -- the human
+# client, the convener, the floor manager itself, or the speaking agent --
+# so a client can show a from/to event log. Never on anything delivered to
+# a conversant.
+_FROM_KEY = "_floorManagerFrom"
+# Report-only, alongside _FROM_KEY: the convener that approved an event it
+# was delegated by handing it back unchanged (the event is still reported as
+# from whoever originally sent it). Carried internally on the returned
+# event and popped before anything is delivered.
+_VIA_KEY = "_floorManagerVia"
+# _ORIGIN_KEY value for events the floor manager generates on its own
+# (auto-revoke/grant after invite, the turn cap, convener-registration
+# revokes); reported as the floor manager's own speakerUri.
+_FLOOR_MANAGER_ORIGIN = "__floor_manager__"
+
 
 def _event_to(event: dict):
     return event.get("to")
@@ -79,6 +96,22 @@ def _event_targets_convener(conv: ConversationState, event: dict) -> bool:
     convener_conversant = conv.convener
     convener_service = normalize_id(convener_conversant.service_url) if convener_conversant else ""
     return (target_speaker and target_speaker == convener_speaker) or (target_service and target_service == convener_service)
+
+
+def _request_floor_subject(conv: ConversationState, event: dict, sender_speaker_uri: str):
+    """The conversant a requestFloor is FOR (OFP 1.1.1 sections 0.4.4 and
+    1.19: a conversant may request the floor for itself or for another).
+    A `to` naming some other conversant means "on behalf of them"; a `to`
+    naming the convener -- the spec's own example -- or no `to` at all means
+    the requester itself. None when neither is a conversant (e.g. the human
+    client), in which case the request's own `to` is used as before."""
+    to = _event_to(event)
+    named = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
+    requester = conv.get_conversant(sender_speaker_uri)
+    if named is not None and not (conv.convener_speaker_uri and normalize_id(named.speaker_uri) == normalize_id(conv.convener_speaker_uri)):
+        if requester is None or normalize_id(named.speaker_uri) != normalize_id(requester.speaker_uri):
+            return named
+    return requester or named
 
 
 def resolve_sender_speaker_uri(in_envelope: dict, event: dict) -> str:
@@ -182,18 +215,93 @@ def resolve_pass_through_targets(conv: ConversationState, event: dict, sender_sp
     ]
 
 
-def _build_outbound_envelope(floor_manager_identity: dict, conv_id: str, event: dict) -> dict:
+def _conversants_payload(conv) -> list:
+    """Build the OFP conversation.conversants array for an outbound
+    envelope: the identification block of every conversant currently on
+    conv's floor. Shared by _build_outbound_envelope (every agent-facing
+    delivery) and _call_convener's floorGranted-augmented version, so a
+    recipient agent can see who else (if anyone) is on the floor -- e.g.
+    base_strategy_agent.py's scope gate uses this to tell "I'm the only
+    agent here, a decline message is useful" apart from "some other
+    conversant can presumably handle this, stay silent"."""
+    return [
+        {
+            "identification": {
+                "speakerUri": c.speaker_uri,
+                "serviceUrl": c.service_url,
+                "conversationalName": c.conversational_name,
+                # organization/synopsis are mandatory (non-Optional) fields
+                # on the openfloor package's Identification dataclass --
+                # empty strings are structurally valid, and callers only
+                # ever read speakerUri/serviceUrl/conversationalName back
+                # out of this list, so no information is actually lost.
+                "organization": "",
+                "synopsis": "",
+            }
+        }
+        for c in conv.conversants.values()
+    ]
+
+
+def _build_outbound_envelope(floor_manager_identity: dict, conv, event: dict) -> dict:
     return {
         "openFloor": {
             "schema": {"version": "1.1", "url": "https://openvoicenetwork.org/schema"},
-            "conversation": {"id": conv_id},
+            "conversation": {"id": conv.conv_id, "conversants": _conversants_payload(conv)},
             "sender": floor_manager_identity,
             "events": [event],
         }
     }
 
 
-def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
+_FLOOR_HOLDER_FEATURE = "floorHolder"
+_RESUME_FEATURE = "resumeAfterFloorHolder"
+
+
+def _event_features(event: dict) -> dict:
+    params = event.get("parameters") or {}
+    dialog = params.get("dialogEvent") or event.get("dialogEvent") or {}
+    return dialog.get("features") or {}
+
+
+def _first_floor_holder(events) -> "dict | None":
+    """The first reply event that is a transient "floor holder" status
+    (an utterance flagged with the floorHolder feature) rather than the
+    agent's actual answer -- see base_strategy_agent.py's _append_floor_holder."""
+    for e in events or []:
+        if isinstance(e, dict) and e.get("eventType") == UTTERANCE and _FLOOR_HOLDER_FEATURE in _event_features(e):
+            return e
+    return None
+
+
+def _clean_event(event: dict) -> dict:
+    e = dict(event)
+    e.pop(_ORIGIN_KEY, None)
+    e.pop(_TRUSTED_KEY, None)
+    return e
+
+
+def _build_resume_event(conversant, original_event: dict, conv, floor_manager_identity: dict) -> dict:
+    """The gateway's follow-up request after a floor holder: asks `conversant`
+    to hand back the answer whose work it has been running since the first
+    request. Delivered straight to that conversant -- it never enters the
+    routing table."""
+    return {
+        "eventType": UTTERANCE,
+        "to": {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url},
+        "parameters": {"dialogEvent": {
+            "id": f"resume:{normalize_id(conv.conv_id) or 'conv'}",
+            "speakerUri": floor_manager_identity.get("speakerUri", ""),
+            "span": {"startTime": datetime.now(timezone.utc).isoformat()},
+            "features": {
+                "text": {"tokens": [{"value": _extract_utterance_text(original_event)}]},
+                _RESUME_FEATURE: {"tokens": [{"value": conv.conv_id}]},
+            },
+        }},
+    }
+
+
+def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, conv, deliver, timeout: float, on_progress=None, on_event=None) -> list:
     """Send `event` to one conversant's serviceUrl via the injected
     `deliver` callback; returns whatever event dicts it replied with (an
     empty list on failure -- delivery failures must never abort the round).
@@ -207,12 +315,26 @@ def deliver_and_collect(conversant, event: dict, floor_manager_identity: dict, c
     network call so a caller (e.g. flask_gateway.py's streaming endpoint)
     can surface real per-conversant activity to a client. May be called from
     a worker thread when reached via deliver_concurrently's thread pool, so
-    it must be safe to call concurrently (a thread-safe queue.put is)."""
-    envelope = _build_outbound_envelope(floor_manager_identity, conv_id, event)
+    it must be safe to call concurrently (a thread-safe queue.put is).
+
+    `on_event(event)` -- when the conversant returns a "floor holder" status
+    instead of its answer (its real work is still running), that status is
+    streamed via on_event immediately and a resume request is sent to
+    collect the finished answer, which is what this function then returns.
+    Agents that don't use the protocol just answer normally and this is a
+    no-op."""
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, event)
     if on_progress:
         on_progress(conversant.speaker_uri, conversant.service_url, "working")
     try:
         events = _deliver_with_retry(conversant, envelope, deliver, timeout)
+        holder = _first_floor_holder(events)
+        if holder is not None:
+            if on_event:
+                on_event({**_clean_event(holder), _FROM_KEY: conversant.speaker_uri})
+            resume_event = _build_resume_event(conversant, event, conv, floor_manager_identity)
+            resume_env = _build_outbound_envelope(floor_manager_identity, conv, resume_event)
+            events = _deliver_with_retry(conversant, resume_env, deliver, timeout)
     finally:
         if on_progress:
             on_progress(conversant.speaker_uri, conversant.service_url, "idle")
@@ -268,7 +390,7 @@ def _deliver_with_retry(conversant, envelope: dict, deliver, timeout: float) -> 
         return []
 
 
-def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv_id: str, deliver, timeout: float, on_progress=None) -> list:
+def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dict, conv, deliver, timeout: float, on_progress=None, on_event=None) -> list:
     """Deliver `event` to every target concurrently (they're independent
     recipients of the same one event -- the spec's normative
     sequential-processing rule governs the EVENT QUEUE, not fan-out to
@@ -278,10 +400,10 @@ def deliver_concurrently(targets: list, event: dict, floor_manager_identity: dic
     if not targets:
         return []
     if len(targets) == 1:
-        return deliver_and_collect(targets[0], event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
+        return deliver_and_collect(targets[0], event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
     with ThreadPoolExecutor(max_workers=min(MAX_CONCURRENT_DELIVERIES, len(targets))) as pool:
         futures = [
-            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv_id, deliver, timeout, on_progress)
+            pool.submit(deliver_and_collect, target, event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
             for target in targets
         ]
         results = [f.result() for f in futures]
@@ -303,11 +425,20 @@ def apply_local_state(conv: ConversationState, event: dict, sender_speaker_uri: 
             return []
         conversant = conv.add_conversant(speaker_uri or service_url, service_url or speaker_uri)
         # Spec default is floorGranted=True the moment a conversant is added
-        # (curation rule, section 2.2). This project deliberately reconciles
-        # that down to revoked immediately -- see base_strategy_agent.py's
+        # (curation rule, section 2.2). With a convener registered, this
+        # project deliberately reconciles that down to revoked immediately so
+        # the convener decides who speaks -- see base_strategy_agent.py's
         # _handle_invite for the matching agent-side deviation/rationale.
+        # With no convener, nobody would ever grant it back, so instead send
+        # an explicit grantFloor: agents that gate locally on grantFloor
+        # (base_strategy_agent.py) then agree with the router's state. A
+        # convener that registers later revokes everyone (see
+        # _revoke_all_on_convener_registration).
         conversant.floor_granted = True
-        return [{"eventType": REVOKE_FLOOR, "to": {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url}}]
+        to_conversant = {"speakerUri": conversant.speaker_uri, "serviceUrl": conversant.service_url}
+        if conv.convener_speaker_uri:
+            return [{"eventType": REVOKE_FLOOR, "to": to_conversant, _ORIGIN_KEY: _FLOOR_MANAGER_ORIGIN}]
+        return [{"eventType": GRANT_FLOOR, "to": to_conversant, _TRUSTED_KEY: True, _ORIGIN_KEY: _FLOOR_MANAGER_ORIGIN}]
 
     if event_type == UNINVITE:
         target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
@@ -331,6 +462,8 @@ def apply_local_state(conv: ConversationState, event: dict, sender_speaker_uri: 
         target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
         if target:
             target.floor_granted = event_type == GRANT_FLOOR
+            if event_type == GRANT_FLOOR:
+                target.turn_capped = False
         return []
 
     if event_type == YIELD_FLOOR:
@@ -365,10 +498,18 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
     queue = deque(raw_events)
     executed = []
 
-    def finalize(event: dict) -> None:
-        executed.append(event)
+    def finalize(event: dict, sender: str, via: str = "") -> None:
+        # Report a copy tagged with who originated it (see _FROM_KEY); the
+        # original may still be delivered to a conversant afterwards.
+        reported = {k: v for k, v in event.items() if k not in (_ORIGIN_KEY, _TRUSTED_KEY, _VIA_KEY)}
+        origin = floor_manager_identity.get("speakerUri", "") if sender == _FLOOR_MANAGER_ORIGIN else sender
+        if origin:
+            reported[_FROM_KEY] = origin
+        if via:
+            reported[_VIA_KEY] = via
+        executed.append(reported)
         if on_event:
-            on_event(event)
+            on_event(reported)
 
     while queue:
         event = queue.popleft()
@@ -380,6 +521,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
         event_type = event.get("eventType")
         sender_speaker_uri = resolve_sender_speaker_uri(in_envelope, event)
         event.pop(_ORIGIN_KEY, None)
+        via = event.pop(_VIA_KEY, "")
 
         if event_type == UTTERANCE:
             if not trusted and not sender_currently_holds_floor(conv, sender_speaker_uri):
@@ -406,6 +548,20 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                     routing_mode=_extract_dialog_feature_value(event, "routingMode"),
                     max_words=int(_extract_dialog_feature_value(event, "maxWords") or 0),
                 )
+                if not conv.convener_speaker_uri:
+                    # No convener to hand the floor back after last round's
+                    # one-comment-per-turn cap -- restore it ourselves, before
+                    # this new question goes out, so capped specialists can
+                    # answer it. Explicit human/agent revokes are left alone.
+                    for capped in [c for c in conv.conversants.values() if c.turn_capped]:
+                        grant_event = {
+                            "eventType": GRANT_FLOOR,
+                            "to": {"speakerUri": capped.speaker_uri, "serviceUrl": capped.service_url},
+                        }
+                        grant_replies = deliver_and_collect(capped, grant_event, floor_manager_identity, conv, deliver, timeout, on_progress)
+                        apply_local_state(conv, grant_event, sender_speaker_uri)
+                        finalize(grant_event, _FLOOR_MANAGER_ORIGIN)
+                        queue.extend(grant_replies)
             elif not is_convener_sender:
                 conv.record_turn(sender_speaker_uri, sender_conversant.conversational_name, _extract_utterance_text(event))
 
@@ -432,7 +588,15 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # from the conversation history while still showing in the raw
             # event log.
             pending_self_revoke = None
-            if not is_convener_sender and sender_conversant is not None:
+            # Only without a convener: when one is registered it decides
+            # who holds the floor, and it already revokes every agent that
+            # speaks (convener.py's _decide_for_specialist_reply, and its
+            # guest handling) via the courtesy copy below. Its revoke is
+            # queued ahead of any replies this broadcast triggers, so the
+            # speaker is closed before a peer's answer could re-trigger it
+            # -- the same guarantee this cap gives -- and capping here as
+            # well just doubled every revoke.
+            if not is_convener_sender and sender_conversant is not None and not conv.convener_speaker_uri:
                 other_conversants = [
                     c for c in conv.conversants.values()
                     if not (conv.convener_speaker_uri and normalize_id(c.speaker_uri) == normalize_id(conv.convener_speaker_uri))
@@ -442,13 +606,14 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                         "eventType": REVOKE_FLOOR,
                         "to": {"speakerUri": sender_conversant.speaker_uri, "serviceUrl": sender_conversant.service_url},
                     }
-                    revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                    revoke_replies = deliver_and_collect(sender_conversant, revoke_event, floor_manager_identity, conv, deliver, timeout, on_progress)
                     apply_local_state(conv, revoke_event, sender_speaker_uri)
+                    sender_conversant.turn_capped = True
                     pending_self_revoke = revoke_event
                     queue.extend(revoke_replies)
 
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv, deliver, timeout, on_progress, on_event)
             # NOT finalize()-ing reply_events here -- each reply re-enters
             # the SAME table (queue.extend below) and gets finalized exactly
             # once, when ITS OWN turn through the loop reaches the
@@ -460,9 +625,9 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                 courtesy_events = deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
                 queue.extendleft(reversed(courtesy_events))
 
-            finalize(event)
+            finalize(event, sender_speaker_uri, via)
             if pending_self_revoke is not None:
-                finalize(pending_self_revoke)
+                finalize(pending_self_revoke, _FLOOR_MANAGER_ORIGIN)
             continue
 
         if event_type in DELEGATABLE_CONTROL:
@@ -478,8 +643,24 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # delegation request, echoing forever. Deciding about its own
             # floor rights isn't a meaningful question for convener to
             # answer anyway, so this always executes directly instead.
-            target_is_convener = _event_targets_convener(conv, event)
+            if event_type == REQUEST_FLOOR:
+                # A request's `to` is normally whoever decides it (the
+                # spec's own example addresses the convener) -- what counts
+                # is who it's FOR. See _request_floor_subject.
+                subject = _request_floor_subject(conv, event, sender_speaker_uri)
+                target_is_convener = (
+                    bool(subject) and bool(conv.convener_speaker_uri)
+                    and normalize_id(subject.speaker_uri) == normalize_id(conv.convener_speaker_uri)
+                )
+            else:
+                subject = None
+                target_is_convener = _event_targets_convener(conv, event)
             if not trusted and conv.convener_speaker_uri and not target_is_convener:
+                if event_type == REQUEST_FLOOR:
+                    # Report the request itself (with its reason) -- the
+                    # convener answers with a grantFloor or revokeFloor of
+                    # its own, which is reported when it's executed.
+                    finalize(event, sender_speaker_uri)
                 convener_events = delegate_to_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
                 queue.extendleft(reversed(convener_events))
                 continue
@@ -488,10 +669,22 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # no convener registered: per table, requestFloor -> auto
             # grantFloor; the rest execute as given.
             if event_type == REQUEST_FLOOR:
-                resolved = {"eventType": GRANT_FLOOR, "to": event.get("to")}
+                grant_to = {"speakerUri": subject.speaker_uri, "serviceUrl": subject.service_url} if subject else event.get("to")
+                resolved = {"eventType": GRANT_FLOOR, "to": grant_to}
             else:
                 resolved = event
             to = _event_to(resolved)
+
+            # The convener manages the floor; it never holds it, so a
+            # grantFloor/revokeFloor addressed to it is neither sent nor
+            # reported. Seen live: inviting the convener got it the grant
+            # every conversant gets while there's no convener, and its
+            # registration then revoked it again -- two meaningless events.
+            if resolved.get("eventType") in (GRANT_FLOOR, REVOKE_FLOOR) and _is_convener_target(conv, to):
+                convener = conv.convener
+                if convener is not None:
+                    convener.floor_granted = False
+                continue
 
             if event_type == INVITE:
                 # apply_local_state creates the conversant for invite -- resolve
@@ -506,7 +699,16 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
                 target = conv.get_conversant(_to_speaker_uri(to)) or conv.get_conversant_by_service_url(_to_service_url(to))
                 extra = apply_local_state(conv, resolved, sender_speaker_uri)
 
-            finalize(resolved)
+            if event_type == REQUEST_FLOOR:
+                # Report both halves: the request from whoever asked (unless
+                # it was already reported when it was delegated and the
+                # convener handed it back), then the grant from whoever
+                # decided it -- that convener, or the floor manager itself.
+                if not trusted:
+                    finalize(event, sender_speaker_uri)
+                finalize(resolved, via or _FLOOR_MANAGER_ORIGIN)
+            else:
+                finalize(resolved, sender_speaker_uri, via)
 
             # Pass-Through: the resolved event must actually reach its target
             # conversant -- apply_local_state above only updates the floor
@@ -514,7 +716,7 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
             # own local floor gate (e.g. base_strategy_agent.py's
             # _floor_granted), which is the real point of grantFloor/revokeFloor.
             if target is not None:
-                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+                reply_events = deliver_and_collect(target, resolved, floor_manager_identity, conv, deliver, timeout, on_progress)
                 # NOT finalize()-ing reply_events -- same reasoning as the
                 # utterance branch above: each reply (e.g. an acceptInvite in
                 # response to this invite) re-enters the table via
@@ -527,21 +729,52 @@ def process_envelope(conv: ConversationState, in_envelope: dict, floor_manager_i
 
         if event_type in PASS_THROUGH_ALWAYS:
             targets = resolve_pass_through_targets(conv, event, sender_speaker_uri)
-            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv.conv_id, deliver, timeout, on_progress)
+            reply_events = deliver_concurrently(targets, event, floor_manager_identity, conv, deliver, timeout, on_progress)
             for reply_event in reply_events:
-                finalize(reply_event)
+                finalize(reply_event, reply_event.get(_ORIGIN_KEY) or sender_speaker_uri)
             apply_local_state(conv, event, sender_speaker_uri)
             if event_type == ACCEPT_INVITE and not conv.convener_speaker_uri:
                 accepting_conversant = conv.get_conversant(sender_speaker_uri)
                 if accepting_conversant is not None:
-                    detect_convener_role(conv, accepting_conversant, floor_manager_identity, deliver, timeout)
-            finalize(event)
+                    if detect_convener_role(conv, accepting_conversant, floor_manager_identity, deliver, timeout):
+                        queue.extend(_revoke_all_on_convener_registration(conv))
+            finalize(event, sender_speaker_uri, via)
             continue
 
         # Unknown event type: report it unchanged, do nothing else.
-        finalize(event)
+        finalize(event, sender_speaker_uri, via)
 
     return executed
+
+
+def _is_convener_target(conv: ConversationState, to) -> bool:
+    """True when ``to`` addresses this conversation's registered convener."""
+    if not conv.convener_speaker_uri or not to:
+        return False
+    convener = conv.convener
+    ids = {normalize_id(conv.convener_speaker_uri)}
+    if convener is not None:
+        ids.add(normalize_id(convener.service_url))
+    return bool({normalize_id(v) for v in (_to_speaker_uri(to), _to_service_url(to)) if v} & ids)
+
+
+def _revoke_all_on_convener_registration(conv: ConversationState) -> list:
+    """Conversants invited before any convener joined were granted the floor
+    (see apply_local_state's invite handling). Once a convener registers it
+    decides who speaks, so revoke everyone still holding the floor, matching
+    the state they'd be in had the convener been present when they were
+    invited. Not the convener itself: it manages the floor and never holds
+    it, so it is only marked revoked here, without an event. Trusted: these
+    are the floor manager's own reconciliation, not something to delegate."""
+    convener = conv.convener
+    if convener is not None:
+        convener.floor_granted = False
+    return [
+        {"eventType": REVOKE_FLOOR, "to": {"speakerUri": c.speaker_uri, "serviceUrl": c.service_url},
+         _TRUSTED_KEY: True, _ORIGIN_KEY: _FLOOR_MANAGER_ORIGIN}
+        for c in conv.conversants.values()
+        if c.floor_granted
+    ]
 
 
 def detect_convener_role(conv: ConversationState, conversant, floor_manager_identity: dict, deliver, timeout: float) -> bool:
@@ -551,7 +784,7 @@ def detect_convener_role(conv: ConversationState, conversant, floor_manager_iden
     floor manager needs to know whether it just gained a convener),
     without waiting for the convener to be discovered any other way (no
     hardcoded port numbers -- works for any Open-Floor-compliant convener)."""
-    envelope = _build_outbound_envelope(floor_manager_identity, conv.conv_id, {"eventType": GET_MANIFESTS})
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, {"eventType": GET_MANIFESTS})
     try:
         events = deliver(conversant.service_url, envelope, timeout) or []
     except Exception:
@@ -578,29 +811,27 @@ def deliver_courtesy_copy_to_convener(conv, event, sender_speaker_uri, floor_man
     return _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress)
 
 
+def _is_unchanged_approval(returned_event: dict, delegated_event: dict) -> bool:
+    """A delegated control event the convener handed back as-is (same type,
+    same target) -- its approval, not a decision of its own."""
+    if returned_event.get("eventType") != delegated_event.get("eventType") or returned_event.get("eventType") == UTTERANCE:
+        return False
+    def ids(event):
+        to = _event_to(event) or {}
+        return {normalize_id(v) for v in (_to_speaker_uri(to), _to_service_url(to)) if v}
+
+    a, b = ids(returned_event), ids(delegated_event)
+    return a == b or bool(a & b)
+
+
 def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deliver, timeout, on_progress=None):
     convener = conv.convener
     if convener is None:
         return []
-    envelope = _build_outbound_envelope(floor_manager_identity, conv.conv_id, event)
+    envelope = _build_outbound_envelope(floor_manager_identity, conv, event)
     openfloor = envelope["openFloor"]
-    openfloor["conversation"]["conversants"] = [
-        {
-            "identification": {
-                "speakerUri": c.speaker_uri,
-                "serviceUrl": c.service_url,
-                "conversationalName": c.conversational_name,
-                # organization/synopsis are mandatory (non-Optional) fields
-                # on the openfloor package's Identification dataclass --
-                # empty strings are structurally valid, and convener only
-                # ever reads speakerUri/serviceUrl/conversationalName back
-                # out of this list, so no information is actually lost.
-                "organization": "",
-                "synopsis": "",
-            }
-        }
-        for c in conv.conversants.values()
-    ]
+    # conversants is already populated by _build_outbound_envelope (via
+    # _conversants_payload) -- only floorGranted is specific to this call.
     # Spec section 1.6: floorGranted is "an array of speakerURIs", not
     # serviceUrls -- speakerUri and serviceUrl happen to be identical for
     # every agent in this project's own examples, which is what let this
@@ -633,4 +864,19 @@ def _call_convener(conv, event, sender_speaker_uri, floor_manager_identity, deli
     for returned_event in returned_events:
         if isinstance(returned_event, dict):
             returned_event[_TRUSTED_KEY] = True
+            if returned_event.get("eventType") == UTTERANCE:
+                # An utterance in someone else's voice (e.g. relaying the
+                # user's private question to the one specialist it was for)
+                # is relayed by the convener, not said by it.
+                speaker = ((returned_event.get("parameters") or {}).get("dialogEvent") or {}).get("speakerUri", "")
+                if speaker and normalize_id(speaker) != normalize_id(convener.speaker_uri):
+                    returned_event[_VIA_KEY] = convener.speaker_uri
+                returned_event.setdefault(_ORIGIN_KEY, convener.speaker_uri)
+            elif sender_speaker_uri and _is_unchanged_approval(returned_event, event):
+                # Handed back as-is: still the original sender's event,
+                # approved by the convener.
+                returned_event.setdefault(_ORIGIN_KEY, sender_speaker_uri)
+                returned_event[_VIA_KEY] = convener.speaker_uri
+            else:
+                returned_event.setdefault(_ORIGIN_KEY, convener.speaker_uri)
     return returned_events
